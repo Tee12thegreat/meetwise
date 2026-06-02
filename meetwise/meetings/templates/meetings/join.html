@@ -1,0 +1,93 @@
+{% extends 'meetings/base.html' %}
+{% block title %}Join Meeting — MeetWise{% endblock %}
+{% block page_title %}Join a Meeting{% endblock %}
+{% block page_subtitle %}Enter a meeting ID or room code to join{% endblock %}
+
+{% block content %}
+<div style="max-width: 520px;">
+
+  <!-- Join by token card -->
+  <div class="card" style="margin-bottom: 20px;">
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:24px;">
+      <div style="width:44px;height:44px;border-radius:12px;background:rgba(212,168,67,0.1);border:1px solid rgba(212,168,67,0.2);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">⤴</div>
+      <div>
+        <div style="font-size:16px;font-weight:600;">Enter Meeting Code</div>
+        <div style="font-size:13px;color:var(--text-muted);">Paste the room code or full meeting UUID shared by the organiser</div>
+      </div>
+    </div>
+
+    <form method="post">
+      {% csrf_token %}
+      <div class="form-group">
+        <label class="form-label">Room Code or Meeting ID</label>
+        <input
+          type="text"
+          name="token"
+          class="form-control"
+          placeholder="e.g.  meetwise-a1b2c3d4  or  550e8400-e29b-41d4-a716-…"
+          autofocus
+          autocomplete="off"
+          spellcheck="false"
+          style="font-family: monospace; font-size: 14px; letter-spacing: 0.3px;"
+        >
+        {% if error %}
+        <div style="margin-top:8px;padding:10px 14px;background:rgba(224,85,85,0.1);border:1px solid rgba(224,85,85,0.2);border-radius:7px;color:var(--red);font-size:13px;">
+          ⚠ {{ error }}
+        </div>
+        {% endif %}
+      </div>
+      <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;padding:12px;">
+        Join Conference Room →
+      </button>
+    </form>
+  </div>
+
+  <!-- Divider -->
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+    <div style="flex:1;height:1px;background:var(--border);"></div>
+    <div style="font-size:11px;color:var(--text-dim);font-weight:600;letter-spacing:1px;text-transform:uppercase;">or</div>
+    <div style="flex:1;height:1px;background:var(--border);"></div>
+  </div>
+
+  <!-- Your upcoming meetings -->
+  <div class="card">
+    <div class="card-title" style="margin-bottom:16px;">Your Upcoming Meetings</div>
+    {% with upcoming=request.user.organized_meetings.all|dictsort:"scheduled_at" %}
+    {% for m in upcoming %}
+      {% if m.status == 'scheduled' or m.status == 'in_progress' %}
+      <div class="meeting-row" style="margin-bottom:8px;">
+        <div class="meeting-row-left">
+          <div class="meeting-row-title">{{ m.title }}</div>
+          <div class="meeting-row-meta" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span>{{ m.scheduled_at|date:"M j, g:i A" }}</span>
+            <span style="color:var(--border);">·</span>
+            <code style="font-size:11px;background:var(--surface);padding:2px 7px;border-radius:4px;border:1px solid var(--border);color:var(--gold);">{{ m.room_code }}</code>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <span class="badge badge-{{ m.status }}">{{ m.get_status_display }}</span>
+          <a href="{% url 'meeting_conference' m.pk %}" class="btn btn-outline btn-sm">Join</a>
+        </div>
+      </div>
+      {% endif %}
+    {% empty %}
+      <div class="empty-state" style="padding:24px 0;">
+        <div style="font-size:28px;margin-bottom:8px;">📅</div>
+        <div style="font-size:13px;">No upcoming meetings. <a href="{% url 'meeting_schedule' %}">Schedule one →</a></div>
+      </div>
+    {% endfor %}
+    {% endwith %}
+  </div>
+
+  <!-- Help note -->
+  <div style="margin-top:16px;padding:14px 16px;border-radius:8px;border:1px solid var(--border);background:var(--surface-2);display:flex;gap:12px;align-items:flex-start;">
+    <div style="font-size:16px;margin-top:1px;">💡</div>
+    <div style="font-size:12px;color:var(--text-muted);line-height:1.6;">
+      Ask the meeting organiser to share the <strong style="color:var(--text);">Room Code</strong> (short, e.g. <code style="color:var(--gold);">meetwise-a1b2c3d4</code>)
+      or the full <strong style="color:var(--text);">Meeting ID</strong> from the meeting detail page.
+      Both work here.
+    </div>
+  </div>
+
+</div>
+{% endblock %}

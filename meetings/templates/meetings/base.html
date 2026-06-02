@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}MeetWise{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #080C16;
+      --surface: #0F1525;
+      --surface-2: #161E30;
+      --border: #1E2A40;
+      --border-light: #263248;
+      --gold: #D4A843;
+      --gold-dim: #A07830;
+      --gold-light: #F0C060;
+      --text: #E8EAF0;
+      --text-muted: #6B7A9A;
+      --text-dim: #4A5570;
+      --green: #2ECC8E;
+      --red: #E05555;
+      --blue: #4A8FF5;
+      --radius: 10px;
+      --radius-lg: 16px;
+      --shadow: 0 4px 24px rgba(0,0,0,0.4);
+      --shadow-gold: 0 0 40px rgba(212,168,67,0.08);
+      --sidebar-w: 240px;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.6;
+      font-size: 15px;
+    }
+    a { color: var(--gold); text-decoration: none; transition: color 0.2s; }
+    a:hover { color: var(--gold-light); }
+    h1,h2,h3,h4 { font-family: 'Cormorant Garamond', serif; font-weight: 600; line-height: 1.2; }
+    button, .btn { cursor: pointer; font-family: 'DM Sans', sans-serif; }
+
+    /* ── Layout ── */
+    .app-shell { display: flex; min-height: 100vh; }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      width: var(--sidebar-w);
+      min-width: var(--sidebar-w);
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      position: fixed;
+      top: 0; left: 0;
+      height: 100vh;
+      z-index: 200;
+      transition: transform 0.28s cubic-bezier(0.4,0,0.2,1);
+    }
+    .sidebar-logo {
+      padding: 28px 24px 24px;
+      border-bottom: 1px solid var(--border);
+    }
+    .logo-mark { display: flex; align-items: center; gap: 10px; }
+    .logo-icon {
+      width: 32px; height: 32px;
+      background: var(--gold); border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--bg); font-size: 16px; font-weight: 700;
+      font-family: 'Cormorant Garamond', serif;
+    }
+    .logo-text { font-family: 'Cormorant Garamond', serif; font-size: 22px; font-weight: 700; color: var(--text); letter-spacing: -0.3px; }
+    .logo-text span { color: var(--gold); }
+
+    .sidebar-nav { padding: 16px 12px; flex: 1; overflow-y: auto; }
+    .nav-section-label {
+      font-size: 10px; font-weight: 600; letter-spacing: 1.5px;
+      text-transform: uppercase; color: var(--text-dim);
+      padding: 8px 12px 6px;
+    }
+    .nav-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 12px; border-radius: 8px;
+      color: var(--text-muted); font-size: 14px; font-weight: 500;
+      transition: all 0.18s; margin-bottom: 2px;
+    }
+    .nav-item:hover { background: var(--surface-2); color: var(--text); }
+    .nav-item.active { background: rgba(212,168,67,0.1); color: var(--gold); }
+    .nav-item .icon { font-size: 16px; width: 20px; text-align: center; }
+
+    .sidebar-footer {
+      padding: 16px 12px;
+      border-top: 1px solid var(--border);
+    }
+    .user-pill { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; }
+    .avatar {
+      width: 30px; height: 30px; border-radius: 50%;
+      background: var(--gold); color: var(--bg);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700; flex-shrink: 0;
+    }
+    .user-info { flex: 1; overflow: hidden; }
+    .user-name { font-size: 13px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .user-role { font-size: 11px; color: var(--text-dim); }
+    .signout-form { display: inline; }
+    .signout-btn {
+      background: none; border: none; padding: 0;
+      color: var(--text-dim); font-size: 11px;
+      font-family: 'DM Sans', sans-serif;
+      cursor: pointer; transition: color 0.2s;
+    }
+    .signout-btn:hover { color: var(--gold); }
+
+    /* ── Overlay ── */
+    .sidebar-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 150;
+      backdrop-filter: blur(2px);
+      transition: opacity 0.28s;
+    }
+    .sidebar-overlay.active { display: block; }
+
+    /* ── Main content ── */
+    .main-content { margin-left: var(--sidebar-w); flex: 1; min-height: 100vh; }
+
+    /* ── Topbar ── */
+    .topbar {
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      display: flex; align-items: center; justify-content: space-between;
+      position: sticky; top: 0; z-index: 100;
+      gap: 12px;
+    }
+    .topbar-left { display: flex; align-items: center; gap: 14px; min-width: 0; }
+    .hamburger {
+      display: none;
+      background: none; border: none;
+      color: var(--text-muted); cursor: pointer;
+      padding: 6px; border-radius: 6px;
+      transition: background 0.18s, color 0.18s;
+      flex-shrink: 0;
+    }
+    .hamburger:hover { background: var(--surface-2); color: var(--text); }
+    .hamburger svg { display: block; }
+    .page-title { font-size: 22px; font-family: 'Cormorant Garamond', serif; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .page-subtitle { font-size: 12px; color: var(--text-muted); margin-top: 1px; }
+    .content-area { padding: 24px; }
+
+    /* ── Cards ── */
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; }
+    .card-sm { padding: 16px 20px; }
+    .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
+    .card-title { font-size: 16px; font-weight: 600; color: var(--text); }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 9px 18px; border-radius: 8px;
+      font-size: 13.5px; font-weight: 500;
+      border: none; transition: all 0.18s;
+      white-space: nowrap;
+    }
+    .btn-primary { background: var(--gold); color: var(--bg); }
+    .btn-primary:hover { background: var(--gold-light); transform: translateY(-1px); }
+    .btn-outline { background: transparent; border: 1px solid var(--border-light); color: var(--text-muted); }
+    .btn-outline:hover { border-color: var(--gold); color: var(--gold); }
+    .btn-ghost { background: transparent; color: var(--text-muted); padding: 9px 14px; }
+    .btn-ghost:hover { color: var(--text); background: var(--surface-2); }
+    .btn-danger { background: rgba(224,85,85,0.12); color: var(--red); border: 1px solid rgba(224,85,85,0.2); }
+    .btn-danger:hover { background: rgba(224,85,85,0.2); }
+    .btn-success { background: rgba(46,204,142,0.12); color: var(--green); border: 1px solid rgba(46,204,142,0.2); }
+    .btn-success:hover { background: rgba(46,204,142,0.2); }
+    .btn-sm { padding: 6px 12px; font-size: 12px; }
+
+    /* ── Badges ── */
+    .badge { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; letter-spacing: 0.3px; }
+    .badge-scheduled { background: rgba(74,143,245,0.12); color: var(--blue); }
+    .badge-in_progress { background: rgba(212,168,67,0.15); color: var(--gold); }
+    .badge-completed { background: rgba(46,204,142,0.12); color: var(--green); }
+    .badge-cancelled { background: rgba(224,85,85,0.12); color: var(--red); }
+
+    /* ── Forms ── */
+    .form-group { margin-bottom: 20px; }
+    .form-label { display: block; font-size: 12px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 7px; }
+    .form-control {
+      width: 100%; background: var(--surface-2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 14px; color: var(--text);
+      font-family: 'DM Sans', sans-serif; font-size: 14px;
+      transition: border-color 0.18s; outline: none;
+    }
+    .form-control:focus { border-color: var(--gold); }
+    .form-control::placeholder { color: var(--text-dim); }
+    textarea.form-control { resize: vertical; min-height: 100px; }
+    .checkbox-group { display: flex; flex-wrap: wrap; gap: 8px; }
+    .checkbox-item {
+      display: flex; align-items: center; gap: 7px;
+      background: var(--surface-2); border: 1px solid var(--border);
+      border-radius: 6px; padding: 7px 12px; cursor: pointer;
+      font-size: 13px; transition: all 0.18s;
+    }
+    .checkbox-item input { accent-color: var(--gold); }
+    .checkbox-item:hover { border-color: var(--gold-dim); }
+
+    /* ── Stats ── */
+    .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 16px; margin-bottom: 28px; }
+    .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px 22px; }
+    .stat-label { font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); margin-bottom: 8px; }
+    .stat-value { font-family: 'Cormorant Garamond', serif; font-size: 36px; font-weight: 700; color: var(--text); line-height: 1; }
+    .stat-value.gold { color: var(--gold); }
+
+    /* ── Meeting rows ── */
+    .meeting-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 16px; border-radius: 8px;
+      border: 1px solid var(--border); background: var(--surface-2);
+      margin-bottom: 8px; gap: 12px; transition: border-color 0.18s;
+    }
+    .meeting-row:hover { border-color: var(--border-light); }
+    .meeting-row-left { flex: 1; min-width: 0; }
+    .meeting-row-title { font-size: 15px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .meeting-row-meta { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+    .meeting-row-actions { display: flex; gap: 6px; flex-shrink: 0; flex-wrap: wrap; }
+
+    /* ── Messages ── */
+    .messages { list-style: none; margin-bottom: 24px; }
+    .messages li { padding: 11px 16px; border-radius: 8px; font-size: 13.5px; margin-bottom: 6px; }
+    .messages .success { background: rgba(46,204,142,0.1); border: 1px solid rgba(46,204,142,0.2); color: var(--green); }
+    .messages .info { background: rgba(74,143,245,0.1); border: 1px solid rgba(74,143,245,0.2); color: var(--blue); }
+    .messages .error { background: rgba(224,85,85,0.1); border: 1px solid rgba(224,85,85,0.2); color: var(--red); }
+
+    .divider { height: 1px; background: var(--border); margin: 24px 0; }
+    .empty-state { text-align: center; padding: 40px 20px; color: var(--text-dim); }
+    .empty-state .icon { font-size: 36px; margin-bottom: 12px; opacity: 0.4; }
+
+    /* ── Mobile ── */
+    @media (max-width: 768px) {
+      .sidebar { transform: translateX(-100%); }
+      .sidebar.open { transform: translateX(0); box-shadow: 4px 0 40px rgba(0,0,0,0.6); }
+      .main-content { margin-left: 0; }
+      .hamburger { display: flex; }
+      .content-area { padding: 16px; }
+      .topbar { padding: 12px 16px; }
+      .stats-row { grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 20px; }
+      .stat-value { font-size: 28px; }
+      .meeting-row { flex-direction: column; align-items: flex-start; }
+      .meeting-row-actions { width: 100%; justify-content: flex-start; }
+      .card { padding: 16px; }
+      .btn { font-size: 13px; padding: 8px 14px; }
+    }
+
+    @media (max-width: 480px) {
+      .stats-row { grid-template-columns: 1fr 1fr; }
+      .page-title { font-size: 18px; }
+    }
+  </style>
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+
+<!-- Mobile overlay -->
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-mark">
+        <div class="logo-icon">M</div>
+        <div class="logo-text">Meet<span>Wise</span></div>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">Navigation</div>
+      <a href="{% url 'dashboard' %}" class="nav-item {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}" onclick="closeSidebar()">
+        <span class="icon">⬡</span> Dashboard
+      </a>
+      <a href="{% url 'meeting_list' %}" class="nav-item {% if request.resolver_match.url_name == 'meeting_list' %}active{% endif %}" onclick="closeSidebar()">
+        <span class="icon">≡</span> All Meetings
+      </a>
+      <a href="{% url 'meeting_schedule' %}" class="nav-item {% if request.resolver_match.url_name == 'meeting_schedule' %}active{% endif %}" onclick="closeSidebar()">
+        <span class="icon">＋</span> Schedule
+      </a>
+      <a href="{% url 'join_meeting' %}" class="nav-item {% if request.resolver_match.url_name == 'join_meeting' %}active{% endif %}" onclick="closeSidebar()">
+        <span class="icon">⤴</span> Join Meeting
+      </a>
+    </nav>
+    <div class="sidebar-footer">
+      {% if user.is_authenticated %}
+      <div class="user-pill">
+        <div class="avatar">{{ user.username|first|upper }}</div>
+        <div class="user-info">
+          <div class="user-name">{{ user.get_full_name|default:user.username }}</div>
+          <div class="user-role">
+            <form method="post" action="{% url 'logout' %}" class="signout-form">
+              {% csrf_token %}
+              <button type="submit" class="signout-btn">Sign out</button>
+            </form>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </aside>
+
+  <main class="main-content">
+    <div class="topbar">
+      <div class="topbar-left">
+        <button class="hamburger" id="hamburgerBtn" aria-label="Open menu">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+            <rect x="2" y="5" width="16" height="1.8" rx="1" fill="currentColor"/>
+            <rect x="2" y="9.1" width="16" height="1.8" rx="1" fill="currentColor"/>
+            <rect x="2" y="13.2" width="16" height="1.8" rx="1" fill="currentColor"/>
+          </svg>
+        </button>
+        <div>
+          <div class="page-title">{% block page_title %}MeetWise{% endblock %}</div>
+          <div class="page-subtitle">{% block page_subtitle %}{% endblock %}</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;flex-shrink:0;">
+        {% block topbar_actions %}{% endblock %}
+      </div>
+    </div>
+
+    <div class="content-area">
+      {% if messages %}
+      <ul class="messages">
+        {% for message in messages %}
+        <li class="{{ message.tags }}">{{ message }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+</div>
+
+<script>
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebarOverlay');
+  const hamburger = document.getElementById('hamburgerBtn');
+
+  function openSidebar() {
+    sidebar.classList.add('open');
+    overlay.classList.add('active');
+    document.body.style.overflow = 'hidden';
+  }
+  function closeSidebar() {
+    sidebar.classList.remove('open');
+    overlay.classList.remove('active');
+    document.body.style.overflow = '';
+  }
+
+  hamburger.addEventListener('click', () => {
+    sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
+  });
+  overlay.addEventListener('click', closeSidebar);
+
+  // Close sidebar on desktop resize
+  window.addEventListener('resize', () => {
+    if (window.innerWidth > 768) closeSidebar();
+  });
+</script>
+
+{% block extra_js %}{% endblock %}
+</body>
+</html>

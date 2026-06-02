@@ -1,0 +1,81 @@
+{% extends 'meetings/base.html' %}
+{% block title %}Dashboard — MeetWise{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+{% block page_subtitle %}{{ now|date:"l, F j, Y" }}{% endblock %}
+{% block topbar_actions %}
+  <a href="{% url 'meeting_schedule' %}" class="btn btn-primary">＋ Schedule Meeting</a>
+{% endblock %}
+
+{% block content %}
+<div class="stats-row">
+  <div class="stat-card">
+    <div class="stat-label">Total Meetings</div>
+    <div class="stat-value gold">{{ total_meetings }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Upcoming</div>
+    <div class="stat-value">{{ upcoming.count }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Past</div>
+    <div class="stat-value">{{ past.count }}</div>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+  <!-- Upcoming -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">Upcoming Meetings</div>
+      <a href="{% url 'meeting_list' %}?status=scheduled" class="btn btn-ghost btn-sm">View all</a>
+    </div>
+    {% if upcoming %}
+      {% for m in upcoming %}
+      <div class="meeting-row">
+        <div class="meeting-row-left">
+          <div class="meeting-row-title">{{ m.title }}</div>
+          <div class="meeting-row-meta">{{ m.scheduled_at|date:"M j, g:i A" }} · {{ m.duration_minutes }}min</div>
+        </div>
+        <div class="meeting-row-actions">
+          <span class="badge badge-{{ m.status }}">{{ m.get_status_display }}</span>
+          <a href="{% url 'meeting_detail' m.pk %}" class="btn btn-outline btn-sm">View</a>
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="empty-state">
+        <div class="icon">📅</div>
+        <div>No upcoming meetings</div>
+        <a href="{% url 'meeting_schedule' %}" class="btn btn-outline btn-sm" style="margin-top:12px;">Schedule one</a>
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- Past -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">Recent Meetings</div>
+      <a href="{% url 'meeting_list' %}?status=completed" class="btn btn-ghost btn-sm">View all</a>
+    </div>
+    {% if past %}
+      {% for m in past %}
+      <div class="meeting-row">
+        <div class="meeting-row-left">
+          <div class="meeting-row-title">{{ m.title }}</div>
+          <div class="meeting-row-meta">{{ m.scheduled_at|date:"M j, g:i A" }}</div>
+        </div>
+        <div class="meeting-row-actions">
+          <span class="badge badge-{{ m.status }}">{{ m.get_status_display }}</span>
+          <a href="{% url 'meeting_detail' m.pk %}" class="btn btn-outline btn-sm">View</a>
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="empty-state">
+        <div class="icon">🗂</div>
+        <div>No past meetings yet</div>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

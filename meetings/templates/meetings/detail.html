@@ -1,0 +1,176 @@
+{% extends 'meetings/base.html' %}
+{% block title %}{{ meeting.title }} — MeetWise{% endblock %}
+{% block page_title %}{{ meeting.title }}{% endblock %}
+{% block page_subtitle %}{{ meeting.scheduled_at|date:"l, F j, Y · g:i A" }}{% endblock %}
+{% block topbar_actions %}
+  <a href="{% url 'meeting_list' %}" class="btn btn-ghost btn-sm">← Back</a>
+  {% if meeting.status == 'scheduled' and meeting.organizer == request.user %}
+    <a href="{% url 'meeting_start' meeting.pk %}" class="btn btn-primary">▶ Start Meeting</a>
+  {% elif meeting.status == 'in_progress' %}
+    <a href="{% url 'meeting_conference' meeting.pk %}" class="btn btn-success">Join Conference</a>
+    {% if meeting.organizer == request.user %}
+      <form method="post" action="{% url 'meeting_end' meeting.pk %}" style="display:inline;">
+        {% csrf_token %}
+        <button class="btn btn-danger">■ End Meeting</button>
+      </form>
+    {% endif %}
+  {% elif meeting.status == 'completed' and not minutes %}
+    <a href="{% url 'meeting_minutes' meeting.pk %}" class="btn btn-primary">Add Minutes</a>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+<div style="display:grid;grid-template-columns:2fr 1fr;gap:20px;">
+  <!-- Left column -->
+  <div>
+    <!-- Status bar -->
+    <div class="card card-sm" style="margin-bottom:16px;display:flex;align-items:center;gap:12px;">
+      <span class="badge badge-{{ meeting.status }}" style="font-size:12px;padding:4px 12px;">{{ meeting.get_status_display }}</span>
+      <span style="color:var(--text-muted);font-size:13px;">{{ meeting.duration_minutes }} minutes</span>
+      <span style="color:var(--text-muted);font-size:13px;">·</span>
+      <span style="color:var(--text-muted);font-size:13px;">Organized by {{ meeting.organizer.get_full_name|default:meeting.organizer.username }}</span>
+      {% if meeting.status == 'scheduled' and meeting.organizer == request.user %}
+        <span style="margin-left:auto;">
+          <form method="post" action="{% url 'meeting_cancel' meeting.pk %}" style="display:inline;">
+            {% csrf_token %}
+            <button class="btn btn-danger btn-sm" onclick="return confirm('Cancel this meeting?')">Cancel Meeting</button>
+          </form>
+        </span>
+      {% endif %}
+    </div>
+
+    {% if meeting.description %}
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-title" style="margin-bottom:10px;">About</div>
+      <p style="color:var(--text-muted);font-size:14px;">{{ meeting.description }}</p>
+    </div>
+    {% endif %}
+
+    {% if meeting.agenda_items %}
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-title" style="margin-bottom:14px;">Agenda</div>
+      {% for item in meeting.agenda_items %}
+      <div style="display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);">
+        <div style="width:22px;height:22px;background:rgba(212,168,67,0.1);border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:11px;font-weight:700;color:var(--gold);">{{ forloop.counter }}</div>
+        <div style="font-size:14px;color:var(--text);padding-top:2px;">{{ item }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Minutes -->
+    {% if minutes %}
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Meeting Minutes</div>
+        <a href="{% url 'meeting_minutes' meeting.pk %}" class="btn btn-outline btn-sm">Edit</a>
+      </div>
+      {% if minutes.content %}
+      <div style="margin-bottom:20px;">
+        <div style="font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--text-dim);margin-bottom:8px;">Notes</div>
+        <p style="font-size:14px;color:var(--text-muted);white-space:pre-wrap;">{{ minutes.content }}</p>
+      </div>
+      {% endif %}
+      {% if minutes.decisions %}
+      <div style="margin-bottom:20px;">
+        <div style="font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--text-dim);margin-bottom:8px;">Key Decisions</div>
+        <p style="font-size:14px;color:var(--text-muted);white-space:pre-wrap;">{{ minutes.decisions }}</p>
+      </div>
+      {% endif %}
+      {% if minutes.action_item_list %}
+      <div>
+        <div style="font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--text-dim);margin-bottom:10px;">Action Items</div>
+        {% for item in minutes.action_item_list %}
+        <div style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--border);">
+          <div style="width:6px;height:6px;background:var(--gold);border-radius:50%;flex-shrink:0;margin-top:5px;"></div>
+          <div style="font-size:14px;color:var(--text);">{{ item }}</div>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+      <div style="margin-top:16px;font-size:11px;color:var(--text-dim);">
+        Recorded by {{ minutes.recorded_by.get_full_name|default:minutes.recorded_by.username }} · Last updated {{ minutes.updated_at|date:"M j, Y g:i A" }}
+      </div>
+    </div>
+    {% elif meeting.status == 'completed' %}
+    <div class="card" style="text-align:center;padding:32px;">
+      <div style="font-size:28px;margin-bottom:12px;">📝</div>
+      <div style="font-size:15px;font-weight:500;margin-bottom:6px;">No minutes yet</div>
+      <div style="font-size:13px;color:var(--text-muted);margin-bottom:20px;">Document the outcome of this meeting</div>
+      <a href="{% url 'meeting_minutes' meeting.pk %}" class="btn btn-primary">Add Minutes</a>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Right column -->
+  <div>
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-title" style="margin-bottom:14px;">Attendees</div>
+      {% for attendee in meeting.attendees.all %}
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);">
+        <div class="avatar" style="width:28px;height:28px;font-size:11px;">{{ attendee.username|first|upper }}</div>
+        <div>
+          <div style="font-size:13px;font-weight:500;">{{ attendee.get_full_name|default:attendee.username }}</div>
+          <div style="font-size:11px;color:var(--text-dim);">Attendee</div>
+        </div>
+      </div>
+      {% empty %}
+      <div style="color:var(--text-dim);font-size:13px;">No attendees added</div>
+      {% endfor %}
+    </div>
+
+    {% if meeting.status == 'in_progress' or meeting.status == 'scheduled' %}
+    <div class="card" style="background:rgba(212,168,67,0.05);border-color:rgba(212,168,67,0.2);">
+      <div style="font-size:13px;font-weight:700;color:var(--gold);margin-bottom:14px;display:flex;align-items:center;gap:7px;">
+        📹 Video Conference
+      </div>
+
+      <!-- Room Code -->
+      <div style="margin-bottom:10px;">
+        <div style="font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--text-dim);margin-bottom:5px;">Room Code</div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <code id="room-code" style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;color:var(--gold);letter-spacing:0.5px;">{{ meeting.room_code }}</code>
+          <button onclick="copyText('room-code', this)" class="btn btn-outline btn-sm" style="flex-shrink:0;">Copy</button>
+        </div>
+      </div>
+
+      <!-- Meeting ID -->
+      <div style="margin-bottom:14px;">
+        <div style="font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--text-dim);margin-bottom:5px;">Meeting ID</div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <code id="meeting-id" style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:11px;color:var(--text-muted);word-break:break-all;letter-spacing:0.2px;">{{ meeting.pk }}</code>
+          <button onclick="copyText('meeting-id', this)" class="btn btn-outline btn-sm" style="flex-shrink:0;">Copy</button>
+        </div>
+      </div>
+
+      <!-- Invite link -->
+      <div style="margin-bottom:16px;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:7px;">
+        <div style="font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--text-dim);margin-bottom:4px;">Share with participants</div>
+        <div style="font-size:12px;color:var(--text-muted);">Share the <strong style="color:var(--text);">Room Code</strong> or <strong style="color:var(--text);">Meeting ID</strong>. Participants can join at <a href="{% url 'join_meeting' %}" style="color:var(--gold);">MeetWise → Join Meeting</a>.</div>
+      </div>
+
+      {% if meeting.status == 'in_progress' %}
+        <a href="{% url 'meeting_conference' meeting.pk %}" class="btn btn-success" style="width:100%;justify-content:center;">Join Video Call</a>
+      {% elif meeting.status == 'scheduled' and meeting.organizer == request.user %}
+        <a href="{% url 'meeting_start' meeting.pk %}" class="btn btn-primary" style="width:100%;justify-content:center;">Start & Join</a>
+      {% elif meeting.status == 'scheduled' %}
+        <a href="{% url 'meeting_conference' meeting.pk %}" class="btn btn-outline" style="width:100%;justify-content:center;">Join When Ready</a>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <script>
+    function copyText(elId, btn) {
+      const text = document.getElementById(elId).textContent.trim();
+      navigator.clipboard.writeText(text).then(() => {
+        const orig = btn.textContent;
+        btn.textContent = '✓ Copied';
+        btn.style.color = 'var(--green)';
+        btn.style.borderColor = 'var(--green)';
+        setTimeout(() => { btn.textContent = orig; btn.style.color = ''; btn.style.borderColor = ''; }, 2000);
+      });
+    }
+    </script>
+  </div>
+</div>
+{% endblock %}

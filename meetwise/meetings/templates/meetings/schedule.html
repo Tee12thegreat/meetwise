@@ -1,0 +1,70 @@
+{% extends 'meetings/base.html' %}
+{% block title %}Schedule Meeting — MeetWise{% endblock %}
+{% block page_title %}Schedule Meeting{% endblock %}
+{% block page_subtitle %}Set up a new meeting with your team{% endblock %}
+
+{% block content %}
+<div style="max-width:680px;">
+  <form method="post">
+    {% csrf_token %}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px;">
+      <div class="card" style="grid-column:1/-1;">
+        <div class="card-title" style="margin-bottom:20px;">Meeting Details</div>
+        <div class="form-group">
+          <label class="form-label">Title</label>
+          <input type="text" name="title" class="form-control" placeholder="e.g. Q4 Strategy Review" value="{{ form.title.value|default:'' }}" required>
+          {% if form.title.errors %}<div style="color:var(--red);font-size:12px;margin-top:4px;">{{ form.title.errors.0 }}</div>{% endif %}
+        </div>
+        <div class="form-group">
+          <label class="form-label">Description</label>
+          <textarea name="description" class="form-control" rows="2" placeholder="Brief context for attendees...">{{ form.description.value|default:'' }}</textarea>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+          <div class="form-group">
+            <label class="form-label">Date & Time</label>
+            <input type="datetime-local" name="scheduled_at" class="form-control" value="{{ form.scheduled_at.value|default:'' }}" required>
+            {% if form.scheduled_at.errors %}<div style="color:var(--red);font-size:12px;margin-top:4px;">{{ form.scheduled_at.errors.0 }}</div>{% endif %}
+          </div>
+          <div class="form-group">
+            <label class="form-label">Duration (minutes)</label>
+            <input type="number" name="duration_minutes" class="form-control" min="15" max="480" step="15" value="{{ form.duration_minutes.value|default:'60' }}" required>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title" style="margin-bottom:16px;">Agenda</div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label">Agenda Items</label>
+          <textarea name="agenda" class="form-control" rows="6" placeholder="1. Review Q3 results&#10;2. Budget planning&#10;3. Team updates">{{ form.agenda.value|default:'' }}</textarea>
+          <div style="font-size:11px;color:var(--text-dim);margin-top:5px;">One item per line</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title" style="margin-bottom:16px;">Attendees</div>
+        <div class="form-group" style="margin-bottom:0;">
+          {% if form.attendees.field.queryset %}
+            <div class="checkbox-group">
+              {% for user in form.attendees.field.queryset %}
+              <label class="checkbox-item">
+                <input type="checkbox" name="attendees" value="{{ user.pk }}"
+                  {% if user.pk|stringformat:"s" in form.attendees.value|default:'' %}checked{% endif %}>
+                {{ user.get_full_name|default:user.username }}
+              </label>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div style="color:var(--text-dim);font-size:13px;">No other users in the system yet. <a href="/admin/auth/user/add/">Add users via admin.</a></div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;">
+      <button type="submit" class="btn btn-primary">Schedule Meeting →</button>
+      <a href="{% url 'dashboard' %}" class="btn btn-outline">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

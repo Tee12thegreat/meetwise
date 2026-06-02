@@ -1,0 +1,9 @@
+Django>=5.2
+django-cors-headers
+anthropic
+icalendar
+gunicorn
+whitenoise
+dj-database-url
+python-decouple
+faster-whisper

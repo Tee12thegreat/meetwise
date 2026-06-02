@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ meeting.title }} — Conference</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <script src='https://meet.jit.si/external_api.js'></script>
+  <style>
+    :root {
+      --bg: #080C16; --surface: #0F1525; --surface-2: #161E30;
+      --border: #1E2A40; --gold: #D4A843; --gold-light: #F0C060;
+      --text: #E8EAF0; --text-muted: #6B7A9A; --text-dim: #4A5570;
+      --green: #2ECC8E; --red: #E05555;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg); color: var(--text);
+      height: 100vh; overflow: hidden;
+      display: flex; flex-direction: column;
+    }
+
+    /* Top bar */
+    .conf-bar {
+      height: 56px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center;
+      padding: 0 20px; gap: 16px;
+      flex-shrink: 0;
+      z-index: 100;
+    }
+    .conf-logo {
+      display: flex; align-items: center; gap: 8px;
+      margin-right: 8px;
+    }
+    .conf-logo-icon {
+      width: 28px; height: 28px; background: var(--gold);
+      border-radius: 7px; display: flex; align-items: center;
+      justify-content: center; color: var(--bg);
+      font-family: 'Cormorant Garamond', serif; font-weight: 700; font-size: 14px;
+    }
+    .conf-logo-text { font-family: 'Cormorant Garamond', serif; font-size: 18px; font-weight: 700; }
+    .conf-logo-text span { color: var(--gold); }
+    .conf-divider { width: 1px; height: 24px; background: var(--border); }
+    .conf-meeting-title { font-size: 14px; font-weight: 500; color: var(--text); }
+    .conf-room { font-size: 11px; color: var(--text-dim); }
+    .live-dot {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 12px; font-weight: 600; color: var(--green);
+      background: rgba(46,204,142,0.1); border: 1px solid rgba(46,204,142,0.2);
+      padding: 4px 10px; border-radius: 20px;
+    }
+    .live-dot::before {
+      content: ''; width: 7px; height: 7px;
+      background: var(--green); border-radius: 50%;
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0%,100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+    .conf-bar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+    .conf-timer {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 20px; font-weight: 600; color: var(--text);
+      min-width: 52px; text-align: right;
+    }
+    .btn-end {
+      background: rgba(224,85,85,0.12); color: var(--red);
+      border: 1px solid rgba(224,85,85,0.25);
+      padding: 7px 16px; border-radius: 8px;
+      font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 600;
+      cursor: pointer; transition: all 0.18s; text-decoration: none;
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    .btn-end:hover { background: rgba(224,85,85,0.2); color: var(--red); }
+    .btn-back {
+      color: var(--text-muted); font-size: 13px;
+      padding: 7px 12px; border-radius: 8px;
+      border: 1px solid var(--border); background: transparent;
+      cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.18s;
+      text-decoration: none;
+    }
+    .btn-back:hover { border-color: var(--border-light); color: var(--text); }
+
+    /* Main conference area */
+    .conf-main {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+    .conf-video-area {
+      flex: 1;
+      position: relative;
+      background: #050810;
+    }
+    #jitsi-container {
+      width: 100%;
+      height: 100%;
+    }
+    .loading-overlay {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      background: #050810;
+      z-index: 10;
+      transition: opacity 0.4s;
+    }
+    .loading-overlay.hidden { opacity: 0; pointer-events: none; }
+    .loading-ring {
+      width: 56px; height: 56px;
+      border: 2px solid var(--border);
+      border-top-color: var(--gold);
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+      margin-bottom: 20px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-text { font-size: 14px; color: var(--text-muted); }
+
+    /* Side panel */
+    .conf-sidebar {
+      width: 300px;
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      flex-shrink: 0;
+    }
+    .conf-sidebar-tabs {
+      display: flex; border-bottom: 1px solid var(--border);
+    }
+    .tab-btn {
+      flex: 1; padding: 14px 0;
+      font-size: 12px; font-weight: 600; letter-spacing: 0.5px;
+      text-transform: uppercase; color: var(--text-dim);
+      background: transparent; border: none; cursor: pointer;
+      transition: all 0.18s; border-bottom: 2px solid transparent;
+    }
+    .tab-btn.active { color: var(--gold); border-bottom-color: var(--gold); }
+    .tab-panel { display: none; flex-direction: column; flex: 1; overflow: hidden; }
+    .tab-panel.active { display: flex; }
+
+    /* Notes panel */
+    .notes-body { flex: 1; padding: 16px; overflow-y: auto; }
+    .notes-footer { padding: 12px 16px; border-top: 1px solid var(--border); }
+    #live-notes {
+      width: 100%; background: transparent;
+      border: none; color: var(--text); font-family: 'DM Sans', sans-serif;
+      font-size: 13px; line-height: 1.7; resize: none;
+      height: 100%; outline: none; min-height: 300px;
+    }
+    #live-notes::placeholder { color: var(--text-dim); }
+    .notes-hint { font-size: 11px; color: var(--text-dim); }
+
+    /* Participants panel */
+    .participants-list { padding: 12px; overflow-y: auto; flex: 1; }
+    .participant-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px; border-radius: 8px;
+      background: var(--surface-2); margin-bottom: 6px;
+    }
+    .participant-avatar {
+      width: 32px; height: 32px; border-radius: 50%;
+      background: var(--gold); color: var(--bg);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; font-weight: 700; flex-shrink: 0;
+    }
+    .participant-name { font-size: 13px; font-weight: 500; }
+    .participant-role { font-size: 11px; color: var(--text-dim); }
+
+    /* Agenda panel */
+    .agenda-list { padding: 12px; overflow-y: auto; flex: 1; }
+    .agenda-item-row {
+      display: flex; gap: 10px; align-items: flex-start;
+      padding: 10px; border-radius: 8px;
+      background: var(--surface-2); margin-bottom: 6px;
+      cursor: pointer; transition: background 0.18s;
+    }
+    .agenda-item-row:hover { background: var(--border); }
+    .agenda-item-row.done { opacity: 0.4; }
+    .agenda-num {
+      width: 22px; height: 22px; background: rgba(212,168,67,0.1);
+      border-radius: 6px; display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 700; color: var(--gold); flex-shrink: 0;
+    }
+    .agenda-item-text { font-size: 13px; color: var(--text); }
+
+    .save-btn {
+      width: 100%; padding: 10px;
+      background: var(--gold); color: var(--bg);
+      border: none; border-radius: 8px;
+      font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 600;
+      cursor: pointer; transition: all 0.18s;
+    }
+    .save-btn:hover { background: var(--gold-light); }
+  </style>
+</head>
+<body>
+
+  <!-- Top bar -->
+  <div class="conf-bar">
+    <div class="conf-logo">
+      <div class="conf-logo-icon">M</div>
+      <div class="conf-logo-text">Meet<span>Wise</span></div>
+    </div>
+    <div class="conf-divider"></div>
+    <div>
+      <div class="conf-meeting-title">{{ meeting.title }}</div>
+      <div class="conf-room" style="display:flex;align-items:center;gap:6px;">
+        <span>Room:</span>
+        <code id="conf-room-code" style="color:var(--gold);cursor:pointer;" title="Click to copy" onclick="copyRoomCode(this)">{{ meeting.room_code }}</code>
+        <span id="copy-hint" style="font-size:10px;color:var(--text-dim);">(click to copy)</span>
+      </div>
+    </div>
+    <div class="live-dot">LIVE</div>
+    <div class="conf-bar-right">
+      <div class="conf-timer" id="timer">0:00</div>
+      <a href="{% url 'meeting_detail' meeting.pk %}" class="btn-back">← Back</a>
+      {% if meeting.organizer.username == request.user.username %}
+      <form method="post" action="{% url 'meeting_end' meeting.pk %}" style="display:inline;">
+        {% csrf_token %}
+        <button class="btn-end" onclick="return confirm('End meeting for everyone?')">■ End Meeting</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div class="conf-main">
+    <div class="conf-video-area">
+      <div class="loading-overlay" id="loading-overlay">
+        <div class="loading-ring"></div>
+        <div class="loading-text">Connecting to conference room…</div>
+      </div>
+      <div id="jitsi-container"></div>
+    </div>
+
+    <!-- Side panel -->
+    <div class="conf-sidebar">
+      <div class="conf-sidebar-tabs">
+        <button class="tab-btn active" onclick="switchTab('notes')">Notes</button>
+        <button class="tab-btn" onclick="switchTab('agenda')">Agenda</button>
+        <button class="tab-btn" onclick="switchTab('people')">People</button>
+      </div>
+
+      <!-- Notes -->
+      <div class="tab-panel active" id="tab-notes">
+        <div class="notes-body">
+          <textarea id="live-notes" placeholder="Take live notes here…&#10;&#10;• Key points discussed&#10;• Decisions made&#10;• Action items"></textarea>
+        </div>
+        <div class="notes-footer">
+          <button class="save-btn" onclick="saveNotes()">Save Notes</button>
+          <div class="notes-hint" style="margin-top:8px;">Notes auto-save to localStorage</div>
+        </div>
+      </div>
+
+      <!-- Agenda -->
+      <div class="tab-panel" id="tab-agenda">
+        <div class="agenda-list">
+          {% if meeting.agenda_items %}
+            {% for item in meeting.agenda_items %}
+            <div class="agenda-item-row" onclick="toggleAgenda(this)">
+              <div class="agenda-num">{{ forloop.counter }}</div>
+              <div class="agenda-item-text">{{ item }}</div>
+            </div>
+            {% endfor %}
+          {% else %}
+            <div style="color:var(--text-dim);font-size:13px;padding:16px;text-align:center;">No agenda items</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- People -->
+      <div class="tab-panel" id="tab-people">
+        <div class="participants-list">
+          <div class="participant-row">
+            <div class="participant-avatar">{{ request.user.username|first|upper }}</div>
+            <div>
+              <div class="participant-name">{{ request.user.get_full_name|default:request.user.username }} (You)</div>
+              <div class="participant-role">{% if meeting.organizer == request.user %}Organizer{% else %}Attendee{% endif %}</div>
+            </div>
+          </div>
+          {% for attendee in meeting.attendees.all %}
+          <div class="participant-row">
+            <div class="participant-avatar" style="background:var(--surface-2);color:var(--text-muted);border:1px solid var(--border);">{{ attendee.username|first|upper }}</div>
+            <div>
+              <div class="participant-name">{{ attendee.get_full_name|default:attendee.username }}</div>
+              <div class="participant-role">Attendee</div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Timer
+    let seconds = 0;
+    setInterval(() => {
+      seconds++;
+      const m = Math.floor(seconds / 60);
+      const s = String(seconds % 60).padStart(2, '0');
+      document.getElementById('timer').textContent = `${m}:${s}`;
+    }, 1000);
+
+    // Tab switching
+    function switchTab(name) {
+      document.querySelectorAll('.tab-btn').forEach((b,i) => {
+        const names = ['notes','agenda','people'];
+        b.classList.toggle('active', names[i] === name);
+      });
+      document.querySelectorAll('.tab-panel').forEach(p => {
+        p.classList.remove('active');
+      });
+      document.getElementById('tab-' + name).classList.add('active');
+    }
+
+    // Agenda toggle
+    function toggleAgenda(el) {
+      el.classList.toggle('done');
+    }
+
+    // Notes save/restore
+    const meetingId = '{{ meeting.pk }}';
+    const storageKey = `meetwise-notes-${meetingId}`;
+    const notesEl = document.getElementById('live-notes');
+
+    // Restore notes
+    const saved = localStorage.getItem(storageKey);
+    if (saved) notesEl.value = saved;
+
+    // Auto-save
+    notesEl.addEventListener('input', () => {
+      localStorage.setItem(storageKey, notesEl.value);
+    });
+
+    function saveNotes() {
+      localStorage.setItem(storageKey, notesEl.value);
+      const btn = document.querySelector('.save-btn');
+      btn.textContent = '✓ Saved';
+      setTimeout(() => btn.textContent = 'Save Notes', 2000);
+    }
+
+    // Jitsi Meet
+    const domain = 'meet.jit.si';
+    const options = {
+      roomName: '{{ meeting.room_code }}',
+      width: '100%',
+      height: '100%',
+      parentNode: document.getElementById('jitsi-container'),
+      userInfo: {
+        displayName: '{{ user_name }}'
+      },
+      configOverwrite: {
+        startWithAudioMuted: false,
+        startWithVideoMuted: false,
+        prejoinPageEnabled: true,
+        disableDeepLinking: true,
+      },
+      interfaceConfigOverwrite: {
+        TOOLBAR_BUTTONS: [
+          'microphone', 'camera', 'closedcaptions', 'desktop',
+          'fullscreen', 'fodeviceselection', 'hangup', 'chat',
+          'recording', 'raisehand', 'tileview', 'settings',
+        ],
+        SHOW_JITSI_WATERMARK: false,
+        SHOW_WATERMARK_FOR_GUESTS: false,
+        DEFAULT_BACKGROUND: '#080C16',
+      },
+    };
+
+    const api = new JitsiMeetExternalAPI(domain, options);
+    api.addEventListener('videoConferenceJoined', () => {
+      document.getElementById('loading-overlay').classList.add('hidden');
+    });
+    function copyRoomCode(el) {
+      navigator.clipboard.writeText(el.textContent.trim()).then(() => {
+        document.getElementById('copy-hint').textContent = '✓ copied!';
+        document.getElementById('copy-hint').style.color = 'var(--green)';
+        setTimeout(() => {
+          document.getElementById('copy-hint').textContent = '(click to copy)';
+          document.getElementById('copy-hint').style.color = '';
+        }, 2000);
+      });
+    }
+
+    api.addEventListener('readyToClose', () => {
+      window.location.href = '{% url 'meeting_detail' meeting.pk %}';
+    });
+  </script>
+</body>
+</html>

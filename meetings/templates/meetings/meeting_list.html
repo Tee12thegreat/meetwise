@@ -1,0 +1,55 @@
+{% extends 'meetings/base.html' %}
+{% block title %}Meetings — MeetWise{% endblock %}
+{% block page_title %}All Meetings{% endblock %}
+{% block page_subtitle %}Your scheduled, active & past meetings{% endblock %}
+{% block topbar_actions %}
+  <a href="{% url 'meeting_schedule' %}" class="btn btn-primary">＋ Schedule</a>
+{% endblock %}
+
+{% block content %}
+<div class="card" style="margin-bottom:20px;">
+  <div style="display:flex;gap:8px;flex-wrap:wrap;">
+    <a href="{% url 'meeting_list' %}" class="btn {% if not status_filter %}btn-primary{% else %}btn-outline{% endif %} btn-sm">All</a>
+    <a href="?status=scheduled" class="btn {% if status_filter == 'scheduled' %}btn-primary{% else %}btn-outline{% endif %} btn-sm">Scheduled</a>
+    <a href="?status=in_progress" class="btn {% if status_filter == 'in_progress' %}btn-primary{% else %}btn-outline{% endif %} btn-sm">In Progress</a>
+    <a href="?status=completed" class="btn {% if status_filter == 'completed' %}btn-primary{% else %}btn-outline{% endif %} btn-sm">Completed</a>
+    <a href="?status=cancelled" class="btn {% if status_filter == 'cancelled' %}btn-primary{% else %}btn-outline{% endif %} btn-sm">Cancelled</a>
+  </div>
+</div>
+
+<div class="card">
+  {% if meetings %}
+    {% for m in meetings %}
+    <div class="meeting-row">
+      <div style="flex:0 0 48px;height:48px;background:var(--surface-2);border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;border:1px solid var(--border);">
+        <div style="font-size:11px;color:var(--text-dim);font-weight:600;">{{ m.scheduled_at|date:"M" }}</div>
+        <div style="font-family:'Cormorant Garamond',serif;font-size:18px;font-weight:700;color:var(--text);line-height:1;">{{ m.scheduled_at|date:"j" }}</div>
+      </div>
+      <div class="meeting-row-left" style="margin-left:4px;">
+        <div class="meeting-row-title">{{ m.title }}</div>
+        <div class="meeting-row-meta">
+          {{ m.scheduled_at|date:"g:i A" }} · {{ m.duration_minutes }}min
+          · Organized by {{ m.organizer.get_full_name|default:m.organizer.username }}
+          · {{ m.attendee_count }} attendee{{ m.attendee_count|pluralize }}
+        </div>
+      </div>
+      <div class="meeting-row-actions">
+        <span class="badge badge-{{ m.status }}">{{ m.get_status_display }}</span>
+        {% if m.status == 'in_progress' %}
+          <a href="{% url 'meeting_conference' m.pk %}" class="btn btn-success btn-sm">Join</a>
+        {% elif m.status == 'scheduled' and m.organizer == request.user %}
+          <a href="{% url 'meeting_start' m.pk %}" class="btn btn-primary btn-sm">Start</a>
+        {% endif %}
+        <a href="{% url 'meeting_detail' m.pk %}" class="btn btn-outline btn-sm">View</a>
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <div class="empty-state">
+      <div class="icon">📋</div>
+      <div>No meetings found</div>
+      <a href="{% url 'meeting_schedule' %}" class="btn btn-outline btn-sm" style="margin-top:12px;">Schedule your first meeting</a>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

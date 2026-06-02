@@ -1,0 +1,132 @@
+{% extends 'meetings/base.html' %}
+
+{% block title %}Minutes — {{ meeting.title }}{% endblock %}
+{% block page_title %}Meeting Minutes{% endblock %}
+{% block page_subtitle %}{{ meeting.title }}{% endblock %}
+
+{% block topbar_actions %}
+  <a href="{% url 'meeting_detail' meeting.pk %}" class="btn btn-ghost btn-sm">← Back</a>
+{% endblock %}
+
+{% block content %}
+<div style="max-width:720px;">
+
+  <!-- AI generation card -->
+  <div class="card" style="margin-bottom:20px;border-color:rgba(212,168,67,0.2);">
+    <div class="card-header" style="margin-bottom:12px;">
+      <div class="card-title">✦ AI Minutes Generator</div>
+      <span style="font-size:11px;color:var(--text-dim);">Powered by Claude</span>
+    </div>
+    <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px;">
+      Paste your raw notes below and Claude will generate a structured summary with decisions and action items.
+    </p>
+    <textarea id="rawNotes" class="form-control" rows="5"
+      placeholder="Paste raw notes or transcript here…"
+      style="margin-bottom:12px;"></textarea>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      <button class="btn btn-primary btn-sm" onclick="generateMinutes()">✦ Generate Minutes</button>
+      <span id="aiStatus" style="font-size:12px;color:var(--text-dim);"></span>
+    </div>
+  </div>
+
+  <!-- Minutes form -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">{% if minutes %}Edit Minutes{% else %}Record Minutes{% endif %}</div>
+    </div>
+
+    <form method="post">
+      {% csrf_token %}
+
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <textarea name="notes" id="notesField" class="form-control" rows="6"
+          placeholder="General meeting notes…">{{ form.notes.value|default:'' }}</textarea>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Decisions Made</label>
+        <textarea name="decisions" id="decisionsField" class="form-control" rows="4"
+          placeholder="Key decisions reached during the meeting…">{{ form.decisions.value|default:'' }}</textarea>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Action Items</label>
+        <textarea name="action_items" id="actionItemsField" class="form-control" rows="4"
+          placeholder="Follow-up tasks and owners…">{{ form.action_items.value|default:'' }}</textarea>
+      </div>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button type="submit" class="btn btn-primary">Save Minutes</button>
+        <a href="{% url 'meeting_detail' meeting.pk %}" class="btn btn-ghost">Cancel</a>
+      </div>
+    </form>
+  </div>
+
+  <!-- Calendar export -->
+  <div style="margin-top:16px;text-align:right;">
+    <a href="{% url 'export_ical' meeting.pk %}" class="btn btn-outline btn-sm">📅 Export to Calendar (.ics)</a>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const MEETING_PK = '{{ meeting.pk }}';
+
+async function generateMinutes() {
+  const notes = document.getElementById('rawNotes').value.trim();
+  const status = document.getElementById('aiStatus');
+
+  if (!notes) {
+    status.textContent = 'Please enter some notes first.';
+    return;
+  }
+
+  status.textContent = '✦ Generating…';
+
+  try {
+    const res = await fetch(`/meetings/${MEETING_PK}/ai/minutes/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': getCookie('csrftoken'),
+      },
+      body: JSON.stringify({ notes }),
+    });
+
+    const data = await res.json();
+
+    if (!data.success) {
+      status.textContent = '✗ ' + (data.error || 'Generation failed.');
+      return;
+    }
+
+    const r = data.result;
+
+    // Fill in the form fields
+    if (r.notes) document.getElementById('notesField').value = r.notes;
+    if (r.decisions && r.decisions.length) {
+      document.getElementById('decisionsField').value = r.decisions.join('\n• ').replace(/^/, '• ');
+    }
+    if (r.action_items && r.action_items.length) {
+      document.getElementById('actionItemsField').value =
+        r.action_items.map(a => `• ${a.task}${a.owner !== 'TBD' ? ' (' + a.owner + ')' : ''}`).join('\n');
+    }
+
+    status.textContent = '✓ Minutes generated — review and save below.';
+    status.style.color = 'var(--green)';
+
+  } catch (e) {
+    status.textContent = '✗ Error: ' + e.message;
+  }
+}
+
+function getCookie(name) {
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop().split(';').shift();
+}
+</script>
+{% endblock %}

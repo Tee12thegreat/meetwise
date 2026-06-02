@@ -1,0 +1,118 @@
+{% extends 'meetings/base.html' %}
+
+{% block title %}Schedule Meeting — MeetWise{% endblock %}
+{% block page_title %}Schedule a Meeting{% endblock %}
+{% block page_subtitle %}Set up a new meeting and invite attendees{% endblock %}
+
+{% block content %}
+<div style="max-width:640px;">
+  <div class="card">
+    <form method="post">
+      {% csrf_token %}
+
+      <div class="form-group">
+        <label class="form-label">Meeting Title</label>
+        <div style="display:flex;gap:8px;">
+          <input type="text" name="title" id="titleField" class="form-control"
+            placeholder="e.g. Q3 Planning Session"
+            value="{{ form.title.value|default:'' }}" required>
+          <button type="button" class="btn btn-outline btn-sm" style="flex-shrink:0;"
+            onclick="suggestAgenda()" title="AI: suggest agenda">✦ Agenda</button>
+        </div>
+        <div id="agendaStatus" style="font-size:11px;color:var(--text-dim);margin-top:4px;"></div>
+        {% if form.title.errors %}<div style="color:var(--red);font-size:12px;margin-top:4px;">{{ form.title.errors }}</div>{% endif %}
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Agenda</label>
+        <textarea name="agenda" id="agendaField" class="form-control" rows="5"
+          placeholder="Meeting agenda — or click ✦ Agenda to generate one from your title…">{{ form.agenda.value|default:'' }}</textarea>
+        {% if form.agenda.errors %}<div style="color:var(--red);font-size:12px;margin-top:4px;">{{ form.agenda.errors }}</div>{% endif %}
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+        <div class="form-group">
+          <label class="form-label">Date & Time</label>
+          <input type="datetime-local" name="scheduled_at" class="form-control"
+            value="{{ form.scheduled_at.value|default:'' }}" required>
+          {% if form.scheduled_at.errors %}<div style="color:var(--red);font-size:12px;margin-top:4px;">{{ form.scheduled_at.errors }}</div>{% endif %}
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Duration (minutes)</label>
+          <input type="number" name="duration" class="form-control"
+            value="{{ form.duration.value|default:'60' }}" min="5" max="480" required>
+          {% if form.duration.errors %}<div style="color:var(--red);font-size:12px;margin-top:4px;">{{ form.duration.errors }}</div>{% endif %}
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Attendees</label>
+        <div class="checkbox-group">
+          {% for user in form.attendees.field.queryset %}
+          <label class="checkbox-item">
+            <input type="checkbox" name="attendees" value="{{ user.pk }}"
+              {% if user.pk in form.attendees.value %}checked{% endif %}>
+            {{ user.get_full_name|default:user.username }}
+          </label>
+          {% endfor %}
+        </div>
+        {% if form.attendees.errors %}<div style="color:var(--red);font-size:12px;margin-top:4px;">{{ form.attendees.errors }}</div>{% endif %}
+      </div>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button type="submit" class="btn btn-primary">Schedule Meeting</button>
+        <a href="{% url 'dashboard' %}" class="btn btn-ghost">Cancel</a>
+      </div>
+
+      <p style="font-size:11px;color:var(--text-dim);margin-top:16px;">
+        ✉ Invitation emails will be sent to all attendees automatically.
+      </p>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function suggestAgenda() {
+  const title = document.getElementById('titleField').value.trim();
+  const status = document.getElementById('agendaStatus');
+
+  if (!title) {
+    status.textContent = 'Enter a meeting title first.';
+    return;
+  }
+
+  status.textContent = '✦ Generating agenda…';
+
+  try {
+    const res = await fetch('/meetings/ai/agenda/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': getCookie('csrftoken'),
+      },
+      body: JSON.stringify({ title }),
+    });
+
+    const data = await res.json();
+    if (data.success) {
+      document.getElementById('agendaField').value = data.agenda;
+      status.textContent = '✓ Agenda generated — edit as needed.';
+      status.style.color = 'var(--green)';
+    } else {
+      status.textContent = '✗ ' + (data.error || 'Could not generate agenda.');
+    }
+  } catch (e) {
+    status.textContent = '✗ Error: ' + e.message;
+  }
+}
+
+function getCookie(name) {
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop().split(';').shift();
+}
+</script>
+{% endblock %}

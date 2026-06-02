@@ -1,0 +1,339 @@
+{% extends 'meetings/base.html' %}
+{% block title %}Minutes — {{ meeting.title }}{% endblock %}
+{% block page_title %}Meeting Minutes{% endblock %}
+{% block page_subtitle %}{{ meeting.title }} · {{ meeting.scheduled_at|date:"F j, Y" }}{% endblock %}
+{% block topbar_actions %}
+  <a href="{% url 'meeting_detail' meeting.pk %}" class="btn btn-ghost btn-sm">← Back to Meeting</a>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+  .mode-toggle {
+    display: inline-flex;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 4px;
+    gap: 2px;
+    margin-bottom: 24px;
+  }
+  .mode-btn {
+    padding: 8px 22px; border-radius: 7px; font-size: 13px; font-weight: 500;
+    border: none; cursor: pointer; background: transparent; color: var(--text-muted);
+    transition: all 0.18s; display: flex; align-items: center; gap: 7px;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .mode-btn.active { background: var(--surface); color: var(--text); box-shadow: 0 1px 4px rgba(0,0,0,0.3); }
+  .mode-btn.active.voice-mode { color: var(--gold); }
+
+  .mic-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 12px; border-radius: 7px;
+    border: 1px solid var(--border); background: var(--surface-2);
+    color: var(--text-muted); font-size: 12px; font-weight: 600;
+    cursor: pointer; transition: all 0.2s;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .mic-btn:hover { border-color: var(--gold-dim); color: var(--gold); }
+  .mic-btn.listening {
+    background: rgba(212,168,67,0.1); border-color: var(--gold); color: var(--gold);
+    animation: mic-pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes mic-pulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(212,168,67,0.35); }
+    50% { box-shadow: 0 0 0 5px rgba(212,168,67,0); }
+  }
+
+  .field-label-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 7px; }
+  .field-controls { display: flex; align-items: center; gap: 8px; }
+
+  .waveform { display: none; align-items: center; gap: 2px; height: 16px; }
+  .waveform.active { display: flex; }
+  .waveform span {
+    display: inline-block; width: 3px; background: var(--gold);
+    border-radius: 2px; animation: wave 0.8s ease-in-out infinite;
+  }
+  .waveform span:nth-child(1){animation-delay:0s;height:4px;}
+  .waveform span:nth-child(2){animation-delay:.1s;height:10px;}
+  .waveform span:nth-child(3){animation-delay:.2s;height:14px;}
+  .waveform span:nth-child(4){animation-delay:.3s;height:8px;}
+  .waveform span:nth-child(5){animation-delay:.4s;height:12px;}
+  .waveform span:nth-child(6){animation-delay:.1s;height:6px;}
+  .waveform span:nth-child(7){animation-delay:.25s;height:10px;}
+  @keyframes wave {
+    0%,100% { transform: scaleY(0.4); }
+    50% { transform: scaleY(1); }
+  }
+
+  .transcript-live {
+    display: none; min-height: 36px; padding: 10px 13px;
+    background: rgba(212,168,67,0.04); border: 1px dashed rgba(212,168,67,0.25);
+    border-radius: 7px; font-size: 13px; color: var(--text-muted);
+    margin-top: 8px; line-height: 1.6;
+  }
+  .transcript-live.active { display: block; }
+  .transcript-live .interim { color: var(--text-dim); font-style: italic; }
+  .transcript-live .final-text { color: var(--text); }
+
+  .voice-instructions {
+    display: none; padding: 14px 16px;
+    background: rgba(212,168,67,0.06); border: 1px solid rgba(212,168,67,0.15);
+    border-radius: 10px; margin-bottom: 20px; font-size: 13px; color: var(--text-muted); line-height: 1.7;
+  }
+  .voice-instructions.visible { display: block; }
+
+  .append-toggle {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; color: var(--text-muted); cursor: pointer;
+  }
+  .append-toggle input { accent-color: var(--gold); cursor: pointer; }
+
+  .voice-only { display: none !important; }
+  .voice-mode-active .voice-only { display: flex !important; }
+
+  .unsupported-banner {
+    display: none; padding: 11px 15px;
+    background: rgba(224,85,85,0.08); border: 1px solid rgba(224,85,85,0.2);
+    border-radius: 8px; color: var(--red); font-size: 13px; margin-bottom: 16px;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="max-width:740px;" id="minutes-root">
+
+  <!-- Meeting info bar -->
+  <div style="display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:20px;">
+    <div style="font-size:22px;">📝</div>
+    <div>
+      <div style="font-size:14px;font-weight:600;">{{ meeting.title }}</div>
+      <div style="font-size:12px;color:var(--text-muted);">{{ meeting.scheduled_at|date:"l, F j, Y · g:i A" }} · {{ meeting.duration_minutes }} minutes</div>
+    </div>
+    <span class="badge badge-{{ meeting.status }}" style="margin-left:auto;">{{ meeting.get_status_display }}</span>
+  </div>
+
+  <!-- Mode toggle -->
+  <div>
+    <div style="font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--text-dim);margin-bottom:10px;">Input Mode</div>
+    <div class="mode-toggle">
+      <button class="mode-btn active" id="btn-manual" onclick="setMode('manual')">✏ Manual Entry</button>
+      <button class="mode-btn voice-mode" id="btn-voice" onclick="setMode('voice')">🎙 Voice Dictation</button>
+    </div>
+  </div>
+
+  <div class="unsupported-banner" id="unsupported-banner">
+    ⚠ Speech recognition is not supported in this browser.
+    Use <strong>Chrome</strong> or <strong>Edge</strong> for voice dictation. Manual entry is still available.
+  </div>
+
+  <div class="voice-instructions" id="voice-instructions">
+    <strong>Voice Dictation active.</strong> Click <strong>🎙 Dictate</strong> next to any field and speak —
+    transcription happens in real time. Click <strong>⏹ Stop</strong> when done.
+    Toggle <strong>Append</strong> to add to existing text, or uncheck to overwrite.
+    Best experience in <strong>Chrome</strong> or <strong>Edge</strong>.
+  </div>
+
+  <form method="post" id="minutes-form">
+    {% csrf_token %}
+    <div class="card" style="margin-bottom:16px;">
+
+      <!-- Notes -->
+      <div class="form-group">
+        <div class="field-label-row">
+          <label class="form-label" style="margin-bottom:0;">Meeting Notes</label>
+          <div class="field-controls">
+            <div class="waveform" id="wave-content"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+            <label class="append-toggle voice-only"><input type="checkbox" id="append-content" checked> Append</label>
+            <button type="button" class="mic-btn voice-only" id="mic-content" onclick="toggleDictation('content')">🎙 Dictate</button>
+          </div>
+        </div>
+        <textarea name="content" id="field-content" class="form-control" rows="8"
+          placeholder="Summary of what was discussed, key points raised, context for decisions...">{{ form.content.value|default:'' }}</textarea>
+        <div class="transcript-live" id="live-content">
+          <span class="final-text" id="final-content"></span><span class="interim" id="interim-content"></span>
+        </div>
+        {% if form.content.errors %}<div style="color:var(--red);font-size:12px;margin-top:4px;">{{ form.content.errors.0 }}</div>{% endif %}
+      </div>
+
+      <!-- Decisions -->
+      <div class="form-group">
+        <div class="field-label-row">
+          <label class="form-label" style="margin-bottom:0;">Key Decisions</label>
+          <div class="field-controls">
+            <div class="waveform" id="wave-decisions"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+            <label class="append-toggle voice-only"><input type="checkbox" id="append-decisions" checked> Append</label>
+            <button type="button" class="mic-btn voice-only" id="mic-decisions" onclick="toggleDictation('decisions')">🎙 Dictate</button>
+          </div>
+        </div>
+        <textarea name="decisions" id="field-decisions" class="form-control" rows="3"
+          placeholder="e.g. Approved Q4 budget of $500k&#10;Agreed to hire 2 engineers by December">{{ form.decisions.value|default:'' }}</textarea>
+        <div class="transcript-live" id="live-decisions">
+          <span class="final-text" id="final-decisions"></span><span class="interim" id="interim-decisions"></span>
+        </div>
+        {% if form.decisions.errors %}<div style="color:var(--red);font-size:12px;margin-top:4px;">{{ form.decisions.errors.0 }}</div>{% endif %}
+      </div>
+
+      <!-- Action Items -->
+      <div class="form-group" style="margin-bottom:0;">
+        <div class="field-label-row">
+          <label class="form-label" style="margin-bottom:0;">Action Items</label>
+          <div class="field-controls">
+            <div class="waveform" id="wave-action_items"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+            <label class="append-toggle voice-only"><input type="checkbox" id="append-action_items" checked> Append</label>
+            <button type="button" class="mic-btn voice-only" id="mic-action_items" onclick="toggleDictation('action_items')">🎙 Dictate</button>
+          </div>
+        </div>
+        <textarea name="action_items" id="field-action_items" class="form-control" rows="5"
+          placeholder="One action item per line&#10;e.g. Alice — Send proposal draft by Friday&#10;Bob — Schedule follow-up with design team">{{ form.action_items.value|default:'' }}</textarea>
+        <div class="transcript-live" id="live-action_items">
+          <span class="final-text" id="final-action_items"></span><span class="interim" id="interim-action_items"></span>
+        </div>
+        <div style="font-size:11px;color:var(--text-dim);margin-top:5px;">One action item per line. Include owner and due date where possible.</div>
+        {% if form.action_items.errors %}<div style="color:var(--red);font-size:12px;margin-top:4px;">{{ form.action_items.errors.0 }}</div>{% endif %}
+      </div>
+    </div>
+
+    {% if meeting.agenda_items %}
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-title" style="margin-bottom:14px;">
+        Original Agenda
+        <span style="font-size:12px;color:var(--text-dim);font-family:'DM Sans',sans-serif;font-weight:400;">(for reference)</span>
+      </div>
+      {% for item in meeting.agenda_items %}
+      <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);">
+        <div style="width:20px;height:20px;background:rgba(212,168,67,0.1);border-radius:5px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:10px;font-weight:700;color:var(--gold);">{{ forloop.counter }}</div>
+        <div style="font-size:13px;color:var(--text-muted);padding-top:1px;">{{ item }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div style="display:flex;gap:10px;align-items:center;">
+      <button type="submit" class="btn btn-primary">Save Minutes →</button>
+      <a href="{% url 'meeting_detail' meeting.pk %}" class="btn btn-outline">Cancel</a>
+      <span id="voice-status" style="font-size:12px;color:var(--text-muted);margin-left:6px;"></span>
+    </div>
+  </form>
+</div>
+
+<script>
+// ── Mode toggle ─────────────────────────────────────────────────
+let currentMode = 'manual';
+
+function setMode(mode) {
+  currentMode = mode;
+  document.getElementById('btn-manual').classList.toggle('active', mode === 'manual');
+  document.getElementById('btn-voice').classList.toggle('active', mode === 'voice');
+  document.getElementById('minutes-root').classList.toggle('voice-mode-active', mode === 'voice');
+  document.getElementById('voice-instructions').classList.toggle('visible', mode === 'voice');
+  if (mode === 'manual' && currentField) stopDictation();
+}
+
+// ── Speech Recognition ──────────────────────────────────────────
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recognition = null;
+let currentField = null;
+let isListening = false;
+
+if (!SR) {
+  document.getElementById('unsupported-banner').style.display = 'block';
+  document.getElementById('btn-voice').disabled = true;
+  document.getElementById('btn-voice').title = 'Not supported — use Chrome or Edge';
+} else {
+  recognition = new SR();
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.lang = 'en-US';
+
+  recognition.onresult = (e) => {
+    if (!currentField) return;
+    let interim = '';
+    let newFinal = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const t = e.results[i][0].transcript;
+      if (e.results[i].isFinal) newFinal += t + ' ';
+      else interim += t;
+    }
+    // Update live preview
+    if (newFinal) document.getElementById('final-' + currentField).textContent += newFinal;
+    document.getElementById('interim-' + currentField).textContent = interim;
+
+    // Write to textarea
+    if (newFinal) {
+      const ta = document.getElementById('field-' + currentField);
+      const appending = document.getElementById('append-' + currentField).checked;
+      if (appending) {
+        ta.value = ta.value ? ta.value.trimEnd() + '\n' + newFinal.trim() : newFinal.trim();
+      } else {
+        ta.value = document.getElementById('final-' + currentField).textContent.trim();
+      }
+    }
+  };
+
+  recognition.onerror = (e) => {
+    const msgs = {
+      'no-speech': 'No speech detected.',
+      'audio-capture': 'No microphone found.',
+      'not-allowed': 'Mic access denied — allow permission in browser settings.',
+    };
+    setStatus(msgs[e.error] || 'Error: ' + e.error, true);
+    stopDictation(false);
+  };
+
+  // Auto-restart on end while still supposed to be listening
+  recognition.onend = () => {
+    if (isListening) try { recognition.start(); } catch(_) {}
+  };
+}
+
+function toggleDictation(field) {
+  if (currentField === field && isListening) stopDictation();
+  else startDictation(field);
+}
+
+function startDictation(field) {
+  if (!recognition) return;
+  if (isListening) stopDictation(false);
+
+  currentField = field;
+  isListening = true;
+
+  // Reset preview
+  document.getElementById('final-' + field).textContent = '';
+  document.getElementById('interim-' + field).textContent = '';
+  document.getElementById('live-' + field).classList.add('active');
+  document.getElementById('wave-' + field).classList.add('active');
+
+  const btn = document.getElementById('mic-' + field);
+  btn.classList.add('listening');
+  btn.innerHTML = '⏹ Stop';
+  setStatus('🎙 Listening — speak now…');
+
+  try { recognition.start(); } catch(_) {}
+}
+
+function stopDictation(updateUI = true) {
+  isListening = false;
+  try { recognition && recognition.stop(); } catch(_) {}
+
+  if (updateUI && currentField) {
+    document.getElementById('live-' + currentField).classList.remove('active');
+    document.getElementById('wave-' + currentField).classList.remove('active');
+    const btn = document.getElementById('mic-' + currentField);
+    if (btn) { btn.classList.remove('listening'); btn.innerHTML = '🎙 Dictate'; }
+    setStatus('');
+  }
+  currentField = null;
+}
+
+function setStatus(msg, isErr = false) {
+  const el = document.getElementById('voice-status');
+  el.textContent = msg;
+  el.style.color = isErr ? 'var(--red)' : 'var(--text-muted)';
+}
+
+document.getElementById('minutes-form').addEventListener('submit', () => {
+  if (isListening) stopDictation();
+});
+</script>
+{% endblock %}
