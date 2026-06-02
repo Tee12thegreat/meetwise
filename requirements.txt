@@ -7,3 +7,4 @@ whitenoise
 dj-database-url
 python-decouple
 faster-whisper
+python-decouple==3.8  # or whichever version you are using locally
