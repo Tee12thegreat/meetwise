@@ -11,6 +11,7 @@ from django.http import HttpResponse, JsonResponse
 from django.views.decorators.http import require_POST
 from django.conf import settings
 import json
+import threading
 
 from .models import Meeting, MeetingMinutes
 from .forms import MeetingForm, MinutesForm
@@ -26,15 +27,24 @@ def logout_view(request):
 
 
 # ─────────────────────────────────────────
-# Email helpers
+# Email — runs in background thread so it
+# never blocks or crashes the request
 # ─────────────────────────────────────────
 
 def send_meeting_email(meeting, subject, template_name, extra_context=None):
-    """Send a meeting notification email to all attendees and the organiser."""
+    """
+    Fire-and-forget email. Runs in a daemon thread so the view
+    returns immediately whether email succeeds or fails.
+    If email credentials are not configured, skips silently.
+    """
+    # Skip entirely if no email credentials configured
+    if not getattr(settings, 'EMAIL_HOST_USER', ''):
+        return
+
     recipients = list(meeting.attendees.values_list('email', flat=True))
     if meeting.organizer.email and meeting.organizer.email not in recipients:
         recipients.append(meeting.organizer.email)
-    recipients = [e for e in recipients if e]  # drop blanks
+    recipients = [e for e in recipients if e]
 
     if not recipients:
         return
@@ -46,19 +56,24 @@ def send_meeting_email(meeting, subject, template_name, extra_context=None):
     if extra_context:
         context.update(extra_context)
 
-    html_body = render_to_string(template_name, context)
-    # Plain-text fallback: strip tags
-    import re
-    plain_body = re.sub(r'<[^>]+>', '', html_body).strip()
+    def _send():
+        try:
+            import re
+            html_body = render_to_string(template_name, context)
+            plain_body = re.sub(r'<[^>]+>', '', html_body).strip()
+            send_mail(
+                subject=subject,
+                message=plain_body,
+                from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@meetwise.app'),
+                recipient_list=recipients,
+                html_message=html_body,
+                fail_silently=True,
+            )
+        except Exception:
+            pass  # never crash the app over email
 
-    send_mail(
-        subject=subject,
-        message=plain_body,
-        from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@meetwise.app'),
-        recipient_list=recipients,
-        html_message=html_body,
-        fail_silently=True,
-    )
+    thread = threading.Thread(target=_send, daemon=True)
+    thread.start()
 
 
 # ─────────────────────────────────────────
@@ -125,14 +140,14 @@ def meeting_schedule(request):
             meeting.save()
             form.save_m2m()
 
-            # Email all attendees
+            # Email runs in background — will not block or crash this view
             send_meeting_email(
                 meeting,
                 subject=f'Meeting Invitation: {meeting.title}',
                 template_name='meetings/email_invite.html',
             )
 
-            messages.success(request, 'Meeting scheduled and invitations sent.')
+            messages.success(request, 'Meeting scheduled successfully.')
             return redirect('meeting_detail', pk=meeting.pk)
     else:
         form = MeetingForm()
@@ -169,13 +184,11 @@ def meeting_start(request, pk):
     if meeting.organizer == request.user and meeting.status == 'scheduled':
         meeting.status = 'in_progress'
         meeting.save()
-
         send_meeting_email(
             meeting,
             subject=f'Meeting Starting Now: {meeting.title}',
             template_name='meetings/email_starting.html',
         )
-
     return redirect('meeting_conference', pk=pk)
 
 
@@ -194,13 +207,11 @@ def meeting_end(request, pk):
     if meeting.organizer == request.user:
         meeting.status = 'completed'
         meeting.save()
-
         send_meeting_email(
             meeting,
             subject=f'Meeting Completed: {meeting.title}',
             template_name='meetings/email_completed.html',
         )
-
         messages.success(request, 'Meeting ended. Add minutes below.')
     return redirect('meeting_minutes', pk=pk)
 
@@ -246,13 +257,11 @@ def meeting_cancel(request, pk):
     if meeting.organizer == request.user and request.method == 'POST':
         meeting.status = 'cancelled'
         meeting.save()
-
         send_meeting_email(
             meeting,
             subject=f'Meeting Cancelled: {meeting.title}',
             template_name='meetings/email_cancelled.html',
         )
-
         messages.info(request, 'Meeting cancelled.')
     return redirect('dashboard')
 
@@ -294,7 +303,6 @@ def export_ical(request, pk):
 
     from icalendar import Calendar, Event as IEvent
     from datetime import timedelta
-    import uuid as uuid_lib
 
     cal = Calendar()
     cal.add('prodid', '-//MeetWise//meetwise.app//')
@@ -309,14 +317,6 @@ def export_ical(request, pk):
     event.add('dtstart', meeting.scheduled_at)
     event.add('dtend', meeting.scheduled_at + timedelta(minutes=meeting.duration))
     event.add('dtstamp', timezone.now())
-    event.add('organizer', f'mailto:{meeting.organizer.email or "noreply@meetwise.app"}')
-
-    for attendee in meeting.attendees.all():
-        if attendee.email:
-            event.add('attendee', f'mailto:{attendee.email}')
-
-    site_url = getattr(settings, 'SITE_URL', 'http://127.0.0.1:8000')
-    event.add('url', f'{site_url}/meetings/{meeting.pk}/')
 
     cal.add_component(event)
 
@@ -326,7 +326,7 @@ def export_ical(request, pk):
 
 
 # ─────────────────────────────────────────
-# AI — Generate minutes from notes
+# AI — Generate minutes (Claude)
 # ─────────────────────────────────────────
 
 @login_required
@@ -343,9 +343,9 @@ def ai_generate_minutes(request, pk):
     if not raw_notes:
         return JsonResponse({'error': 'No notes provided.'}, status=400)
 
-    api_key = getattr(settings, 'ANTHROPIC_API_KEY', None)
+    api_key = getattr(settings, 'ANTHROPIC_API_KEY', '')
     if not api_key:
-        return JsonResponse({'error': 'AI not configured. Add ANTHROPIC_API_KEY to settings.'}, status=503)
+        return JsonResponse({'error': 'AI not configured. Add ANTHROPIC_API_KEY to your environment variables on Render.'}, status=503)
 
     try:
         import anthropic
@@ -359,10 +359,10 @@ Raw notes:
 {raw_notes}
 
 Return a JSON object with exactly these keys:
-- "summary": 2-4 sentence executive summary of what was discussed
+- "summary": 2-4 sentence executive summary
 - "decisions": list of decisions made (strings)
 - "action_items": list of action items, each with "task" and "owner" (use "TBD" if unknown)
-- "notes": cleaned, professional version of the notes
+- "notes": cleaned professional version of the notes
 
 Return ONLY the JSON object, no markdown, no explanation."""
 
@@ -384,7 +384,7 @@ Return ONLY the JSON object, no markdown, no explanation."""
 
 
 # ─────────────────────────────────────────
-# AI — Suggest agenda from title
+# AI — Suggest agenda
 # ─────────────────────────────────────────
 
 @login_required
@@ -399,7 +399,7 @@ def ai_suggest_agenda(request):
     if not title:
         return JsonResponse({'error': 'No title provided.'}, status=400)
 
-    api_key = getattr(settings, 'ANTHROPIC_API_KEY', None)
+    api_key = getattr(settings, 'ANTHROPIC_API_KEY', '')
     if not api_key:
         return JsonResponse({'error': 'AI not configured.'}, status=503)
 
@@ -412,30 +412,28 @@ def ai_suggest_agenda(request):
             max_tokens=400,
             messages=[{
                 'role': 'user',
-                'content': f'Write a concise, professional meeting agenda for a meeting titled "{title}". '
-                           f'Return 4-6 bullet points only, no intro text, no numbering, just the agenda items each on a new line starting with "• ".'
+                'content': f'Write a concise professional meeting agenda for a meeting titled "{title}". '
+                           f'Return 4-6 bullet points only, each on a new line starting with "• ".'
             }]
         )
 
-        agenda = message.content[0].text.strip()
-        return JsonResponse({'success': True, 'agenda': agenda})
+        return JsonResponse({'success': True, 'agenda': message.content[0].text.strip()})
 
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
 
 
 # ─────────────────────────────────────────
-# Transcription — Faster-Whisper (tiny model, runs locally)
+# Transcription — Faster-Whisper (local model)
+# Runs entirely on your server, no external API
 # ─────────────────────────────────────────
 
-_whisper_model = None  # cached at module level so it loads once
+_whisper_model = None
 
 def _get_whisper():
-    """Load the tiny Whisper model once and reuse it."""
     global _whisper_model
     if _whisper_model is None:
         from faster_whisper import WhisperModel
-        # tiny model: 39MB, fast on CPU, good enough for meeting notes
         _whisper_model = WhisperModel('tiny', device='cpu', compute_type='int8')
     return _whisper_model
 
@@ -443,18 +441,12 @@ def _get_whisper():
 @login_required
 @require_POST
 def transcribe_audio(request, pk):
-    """
-    Receives an audio blob from the browser (webm/ogg),
-    transcribes it with the local Faster-Whisper tiny model,
-    and returns the text as JSON.
-    """
     audio_file = request.FILES.get('audio')
     if not audio_file:
         return JsonResponse({'error': 'No audio file received.'}, status=400)
 
     import tempfile, os
 
-    # Write the audio blob to a temp file so Whisper can read it
     suffix = '.webm'
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         for chunk in audio_file.chunks():
@@ -469,4 +461,4 @@ def transcribe_audio(request, pk):
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
     finally:
-        os.unlink(tmp_path)  # always clean up the temp file
+        os.unlink(tmp_path)
