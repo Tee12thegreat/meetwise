@@ -1,12 +1,22 @@
 from pathlib import Path
-import os
+import dj_database_url
 from decouple import config, Csv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-SECRET_KEY = 'django-insecure-meetwise-prototype-2024-change-in-production'
-DEBUG = True
-ALLOWED_HOSTS = ['*']
 
+# ── Security ──────────────────────────────────────────────────
+SECRET_KEY = config('DJANGO_SECRET_KEY', default='django-insecure-meetwise-prototype-2024')
+DEBUG = config('DEBUG', default=True, cast=bool)
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='*', cast=Csv())
+
+CSRF_TRUSTED_ORIGINS = [
+    'https://*.ngrok-free.app',
+    'https://*.onrender.com',
+]
+
+SECURE_CROSS_ORIGIN_OPENER_POLICY = None  # Allow Jitsi iframes
+
+# ── Apps ──────────────────────────────────────────────────────
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -18,11 +28,11 @@ INSTALLED_APPS = [
     'corsheaders',
 ]
 
+# ── Middleware ────────────────────────────────────────────────
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'corsheaders.middleware.CorsMiddleware',  # ← add this first
-    'django.middleware.common.CommonMiddleware',
-    # 'whitenoise.middleware.WhiteNoiseMiddleware',  # enable after: pip install whitenoise
+    'whitenoise.middleware.WhiteNoiseMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -30,13 +40,11 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
-CSRF_TRUSTED_ORIGINS = [
-    'https://*.ngrok-free.app',
-]
-# Allow Jitsi to load in iframes
-SECURE_CROSS_ORIGIN_OPENER_POLICY = None
-ROOT_URLCONF = 'meetwise.urls'
 
+ROOT_URLCONF = 'meetwise.urls'
+WSGI_APPLICATION = 'meetwise.wsgi.application'
+
+# ── Templates ─────────────────────────────────────────────────
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
@@ -53,34 +61,8 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'meetwise.wsgi.application'
-
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
-}
-
-AUTH_PASSWORD_VALIDATORS = []
-LANGUAGE_CODE = 'en-us'
-TIME_ZONE = 'UTC'
-USE_I18N = True
-USE_TZ = True
-
-STATIC_URL = '/static/'
-STATICFILES_DIRS = [BASE_DIR / 'static']
-STATIC_ROOT = BASE_DIR / 'staticfiles'
-# STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'  # requires whitenoise
-
-DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-LOGIN_REDIRECT_URL = '/'
-LOGOUT_REDIRECT_URL = '/accounts/login/'
-SECRET_KEY = config('DJANGO_SECRET_KEY', default='your-local-dev-key-change-this')
-DEBUG = config('DEBUG', default=True, cast=bool)
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='*', cast=Csv())
-
-# ── Database (auto-switches to PostgreSQL on Render) ──────────
+# ── Database ──────────────────────────────────────────────────
+# Uses SQLite locally, switches to PostgreSQL on Render automatically
 DATABASES = {
     'default': dj_database_url.config(
         default=f'sqlite:///{BASE_DIR / "db.sqlite3"}',
@@ -88,13 +70,29 @@ DATABASES = {
     )
 }
 
-# ── Static files (WhiteNoise for production) ──────────────────
-MIDDLEWARE = [
-    'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',   # ← add after SecurityMiddleware
-    # ... rest of your middleware
-]
+# ── Password validators ───────────────────────────────────────
+AUTH_PASSWORD_VALIDATORS = []
+
+# ── Internationalisation ──────────────────────────────────────
+LANGUAGE_CODE = 'en-us'
+TIME_ZONE = 'UTC'
+USE_I18N = True
+USE_TZ = True
+
+# ── Static files ──────────────────────────────────────────────
+STATIC_URL = '/static/'
+STATICFILES_DIRS = [BASE_DIR / 'static']
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
+# ── Media files ───────────────────────────────────────────────
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
+# ── Auth redirects ────────────────────────────────────────────
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+LOGIN_REDIRECT_URL = '/'
+LOGOUT_REDIRECT_URL = '/accounts/login/'
 
 # ── Email ─────────────────────────────────────────────────────
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
@@ -108,9 +106,5 @@ DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='MeetWise <noreply@mee
 # ── AI ────────────────────────────────────────────────────────
 ANTHROPIC_API_KEY = config('ANTHROPIC_API_KEY', default='')
 
-# ── Site URL (used in emails) ─────────────────────────────────
+# ── Site URL (used in emails and calendar exports) ────────────
 SITE_URL = config('SITE_URL', default='http://127.0.0.1:8000')
-
-# ── Media ─────────────────────────────────────────────────────
-MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
