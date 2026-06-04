@@ -1,142 +1,112 @@
 {% extends 'meetings/base.html' %}
-
 {% block title %}{{ meeting.title }} — Conference{% endblock %}
 
 {% block extra_head %}
 <style>
   body { overflow: hidden; }
-  .conf-shell {
-    display: flex;
-    height: calc(100vh - 57px);
-    overflow: hidden;
-  }
+  .conf-shell { display:flex; height:calc(100vh - 57px); overflow:hidden; }
 
-  /* ── Video ── */
-  .conf-video { flex: 1; background: #000; position: relative; min-width: 0; }
-  #jitsi-container { width: 100%; height: 100%; }
+  .conf-video { flex:1; background:#000; min-width:0; }
+  #jitsi-container { width:100%; height:100%; }
 
-  /* ── Side panel ── */
   .conf-panel {
-    width: 340px; min-width: 340px;
-    background: var(--surface);
-    border-left: 1px solid var(--border);
-    display: flex; flex-direction: column; overflow: hidden;
+    width:340px; min-width:340px; background:var(--surface);
+    border-left:1px solid var(--border);
+    display:flex; flex-direction:column; overflow:hidden;
   }
 
-  .panel-tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
-  .panel-tab {
-    flex: 1; padding: 11px 6px; text-align: center;
-    font-size: 12px; font-weight: 600; letter-spacing: 0.4px;
-    color: var(--text-dim); cursor: pointer;
-    border-bottom: 2px solid transparent; transition: all 0.18s;
-    background: none; border-top: none; border-left: none; border-right: none;
-    font-family: 'DM Sans', sans-serif;
-  }
-  .panel-tab.active { color: var(--gold); border-bottom-color: var(--gold); }
-  .panel-tab:hover:not(.active) { color: var(--text-muted); }
-
-  .panel-body { flex: 1; overflow-y: auto; padding: 16px; display: none; flex-direction: column; gap: 12px; }
-  .panel-body.active { display: flex; }
-
-  /* ── Timer ── */
   .conf-timer {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 10px 16px; background: var(--surface-2);
-    border-bottom: 1px solid var(--border); flex-shrink: 0;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:10px 16px; background:var(--surface-2);
+    border-bottom:1px solid var(--border); flex-shrink:0;
   }
-  .timer-display { font-family: 'Cormorant Garamond', serif; font-size: 22px; font-weight: 600; color: var(--gold); letter-spacing: 1px; }
-  .timer-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.8px; }
+  .timer-val { font-family:'Cormorant Garamond',serif; font-size:22px; font-weight:600; color:var(--gold); letter-spacing:1px; }
+  .timer-lbl { font-size:10px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.8px; }
 
-  /* ── Notes ── */
+  .panel-tabs { display:flex; border-bottom:1px solid var(--border); flex-shrink:0; }
+  .panel-tab {
+    flex:1; padding:11px 4px; text-align:center; font-size:12px; font-weight:600;
+    color:var(--text-dim); cursor:pointer; border-bottom:2px solid transparent;
+    transition:all 0.18s; background:none; border-top:none; border-left:none; border-right:none;
+    font-family:'DM Sans',sans-serif;
+  }
+  .panel-tab.active { color:var(--gold); border-bottom-color:var(--gold); }
+
+  .panel-body { flex:1; overflow-y:auto; padding:16px; display:none; flex-direction:column; gap:10px; }
+  .panel-body.active { display:flex; }
+
   .notes-area {
-    width: 100%; background: var(--surface-2); border: 1px solid var(--border);
-    border-radius: 8px; padding: 10px 12px; color: var(--text);
-    font-family: 'DM Sans', sans-serif; font-size: 13px;
-    resize: none; outline: none; min-height: 160px;
-    transition: border-color 0.18s; flex-shrink: 0;
+    width:100%; background:var(--surface-2); border:1px solid var(--border);
+    border-radius:8px; padding:10px 12px; color:var(--text);
+    font-family:'DM Sans',sans-serif; font-size:13px; resize:none; outline:none;
+    min-height:160px; transition:border-color 0.18s;
   }
-  .notes-area:focus { border-color: var(--gold); }
+  .notes-area:focus { border-color:var(--gold); }
 
-  /* ── Transcript ── */
   .transcript-box {
-    background: var(--surface-2); border: 1px solid var(--border);
-    border-radius: 8px; padding: 12px; font-size: 13px;
-    line-height: 1.7; color: var(--text-muted);
-    min-height: 140px; max-height: 280px; overflow-y: auto; flex-shrink: 0;
+    background:var(--surface-2); border:1px solid var(--border); border-radius:8px;
+    padding:12px; font-size:13px; line-height:1.7; color:var(--text-muted);
+    min-height:120px; max-height:260px; overflow-y:auto; flex-shrink:0;
   }
-  .transcript-interim { color: var(--gold); font-style: italic; }
 
-  /* ── Recording indicator ── */
   .rec-pill {
-    display: none; align-items: center; gap: 7px;
-    background: rgba(224,85,85,0.1); border: 1px solid rgba(224,85,85,0.25);
-    border-radius: 20px; padding: 4px 12px; font-size: 12px; color: var(--red);
+    display:none; align-items:center; gap:7px;
+    background:rgba(224,85,85,0.1); border:1px solid rgba(224,85,85,0.25);
+    border-radius:20px; padding:4px 12px; font-size:12px; color:var(--red);
   }
-  .rec-pill.active { display: flex; }
-  .rec-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--red); animation: blink 1s infinite; }
-  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+  .rec-pill.on { display:flex; }
+  .rec-dot { width:7px; height:7px; border-radius:50%; background:var(--red); animation:blink 1s infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.15} }
 
-  /* ── Progress bar for chunk processing ── */
-  .chunk-progress {
-    height: 2px; background: var(--border); border-radius: 2px; overflow: hidden;
-    display: none;
-  }
-  .chunk-progress.active { display: block; }
-  .chunk-bar { height: 100%; background: var(--gold); width: 0%; transition: width 0.3s; }
+  .t-status { font-size:11px; color:var(--text-dim); min-height:16px; }
 
-  /* ── Agenda ── */
   .agenda-item {
-    display: flex; align-items: flex-start; gap: 10px;
-    padding: 8px 10px; background: var(--surface-2);
-    border: 1px solid var(--border); border-radius: 6px;
-    font-size: 13px; cursor: pointer; transition: border-color 0.18s;
+    display:flex; align-items:flex-start; gap:10px; padding:8px 10px;
+    background:var(--surface-2); border:1px solid var(--border); border-radius:6px;
+    font-size:13px; transition:border-color 0.18s;
   }
-  .agenda-item:hover { border-color: var(--border-light); }
-  .agenda-item input[type=checkbox] { accent-color: var(--gold); margin-top: 2px; flex-shrink: 0; }
-  .agenda-item.done label { text-decoration: line-through; color: var(--text-dim); }
-  .agenda-item label { cursor: pointer; }
+  .agenda-item input { accent-color:var(--gold); margin-top:2px; flex-shrink:0; }
+  .agenda-item.done label { text-decoration:line-through; color:var(--text-dim); }
+  .agenda-item label { cursor:pointer; }
 
-  /* ── Participants ── */
-  .participant-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: var(--surface-2); border-radius: 6px; font-size: 13px; }
-  .participant-avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--gold-dim); color: var(--bg); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; }
+  .person-item { display:flex; align-items:center; gap:10px; padding:8px 10px; background:var(--surface-2); border-radius:6px; font-size:13px; }
+  .person-av { width:28px; height:28px; border-radius:50%; background:var(--gold-dim); color:var(--bg); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; flex-shrink:0; }
 
-  .panel-section-label { font-size: 10px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); margin-bottom: 6px; margin-top: 4px; }
+  .sec-lbl { font-size:10px; font-weight:600; letter-spacing:1.2px; text-transform:uppercase; color:var(--text-dim); }
 
-  @media (max-width: 900px) {
-    .conf-shell { flex-direction: column; height: auto; overflow: auto; }
-    .conf-video { height: 50vh; min-height: 260px; }
-    .conf-panel { width: 100%; min-width: unset; border-left: none; border-top: 1px solid var(--border); }
-    body { overflow: auto; }
+  @media(max-width:900px) {
+    .conf-shell { flex-direction:column; height:auto; overflow:auto; }
+    .conf-video { height:45vh; min-height:240px; }
+    .conf-panel { width:100%; min-width:unset; border-left:none; border-top:1px solid var(--border); }
+    body { overflow:auto; }
   }
 </style>
 {% endblock %}
 
 {% block page_title %}{{ meeting.title }}{% endblock %}
-{% block page_subtitle %}Conference Room · {{ meeting.room_code }}{% endblock %}
+{% block page_subtitle %}Conference · {{ meeting.room_code }}{% endblock %}
 
 {% block topbar_actions %}
-  {% if meeting.organizer == request.user and meeting.status == 'in_progress' %}
-    <form method="post" action="{% url 'meeting_end' meeting.pk %}">
-      {% csrf_token %}
-      <button type="submit" class="btn btn-danger btn-sm">⏹ End Meeting</button>
-    </form>
-  {% endif %}
-  <a href="{% url 'meeting_detail' meeting.pk %}" class="btn btn-ghost btn-sm">← Detail</a>
+{% if meeting.organizer == request.user and meeting.status == 'in_progress' %}
+<form method="post" action="{% url 'meeting_end' meeting.pk %}">
+  {% csrf_token %}
+  <button type="submit" class="btn btn-danger btn-sm">⏹ End Meeting</button>
+</form>
+{% endif %}
+<a href="{% url 'meeting_detail' meeting.pk %}" class="btn btn-ghost btn-sm">← Detail</a>
 {% endblock %}
 
 {% block content %}
 <div class="conf-shell">
-
   <div class="conf-video">
     <div id="jitsi-container"></div>
   </div>
 
   <div class="conf-panel">
-
     <div class="conf-timer">
       <div>
-        <div class="timer-label">Duration</div>
-        <div class="timer-display" id="timer">00:00:00</div>
+        <div class="timer-lbl">Duration</div>
+        <div class="timer-val" id="timerDisplay">00:00:00</div>
       </div>
       <span class="badge badge-{{ meeting.status }}">{{ meeting.get_status_display }}</span>
     </div>
@@ -148,89 +118,77 @@
       <button class="panel-tab" onclick="switchTab(this,'people')">People</button>
     </div>
 
-    <!-- Notes tab -->
+    <!-- Notes -->
     <div class="panel-body active" id="tab-notes">
-      <div class="panel-section-label">Live Notes</div>
+      <div class="sec-lbl">Live Notes</div>
       <textarea class="notes-area" id="liveNotes" rows="8"
-        placeholder="Type notes here… or use the Transcript tab to capture speech."></textarea>
+        placeholder="Type notes here, or use Transcript tab to capture speech…"></textarea>
       <button class="btn btn-outline btn-sm" onclick="copyNotes()" style="align-self:flex-start;">Copy Notes</button>
-      <div style="font-size:11px;color:var(--text-dim);">Notes are saved in your browser. Copy them to the minutes form when done.</div>
+      <div style="font-size:11px;color:var(--text-dim);">Saved in your browser. Copy to minutes form when done.</div>
     </div>
 
-    <!-- Transcript tab -->
+    <!-- Transcript -->
     <div class="panel-body" id="tab-transcript">
-      <div class="panel-section-label">Voice Transcription</div>
-
+      <div class="sec-lbl">Voice Transcription</div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
         <button class="btn btn-sm btn-success" id="startBtn" onclick="startRecording()">🎙 Start</button>
         <button class="btn btn-sm btn-danger" id="stopBtn" onclick="stopRecording()" style="display:none;">⏹ Stop</button>
-        <div class="rec-pill" id="recPill"><div class="rec-dot"></div> Recording</div>
+        <div class="rec-pill" id="recPill"><div class="rec-dot"></div>Recording</div>
       </div>
-
-      <!-- Shows while a chunk is being processed -->
-      <div class="chunk-progress" id="chunkProgress">
-        <div class="chunk-bar" id="chunkBar"></div>
-      </div>
-      <div id="chunkStatus" style="font-size:11px;color:var(--text-dim);min-height:16px;"></div>
-
+      <div class="t-status" id="tStatus"></div>
       <div class="transcript-box" id="transcriptBox">
         <span style="color:var(--text-dim);font-size:12px;">
-          Transcription will appear here.<br><br>
-          Audio is processed locally by our lite Whisper model — nothing is sent to external servers.
+          Press Start. Audio is transcribed locally every 8 seconds by our Whisper model.<br><br>
+          Works in Chrome, Edge, Firefox, and Safari.
         </span>
       </div>
-
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button class="btn btn-outline btn-sm" onclick="appendToNotes()">→ Append to Notes</button>
         <button class="btn btn-ghost btn-sm" onclick="clearTranscript()">Clear</button>
       </div>
-
-      <div style="font-size:11px;color:var(--text-dim);">
-        Chunks are sent every 8 seconds. Works in all browsers.
-      </div>
     </div>
 
-    <!-- Agenda tab -->
+    <!-- Agenda -->
     <div class="panel-body" id="tab-agenda">
-      <div class="panel-section-label">Agenda Checklist</div>
+      <div class="sec-lbl">Agenda Checklist</div>
       {% if meeting.agenda %}
         {% for line in meeting.agenda.splitlines %}
           {% if line.strip %}
-          <div class="agenda-item" id="ag-{{ forloop.counter }}">
-            <input type="checkbox" id="chk-{{ forloop.counter }}" onchange="toggleAgenda(this,'ag-{{ forloop.counter }}')">
-            <label for="chk-{{ forloop.counter }}">{{ line }}</label>
+          <div class="agenda-item" id="ag{{ forloop.counter }}">
+            <input type="checkbox" id="chk{{ forloop.counter }}"
+              onchange="document.getElementById('ag{{ forloop.counter }}').classList.toggle('done',this.checked)">
+            <label for="chk{{ forloop.counter }}">{{ line }}</label>
           </div>
           {% endif %}
         {% endfor %}
       {% else %}
-        <div style="color:var(--text-dim);font-size:13px;">No agenda set.</div>
+        <div style="color:var(--text-dim);font-size:13px;">No agenda set for this meeting.</div>
       {% endif %}
     </div>
 
-    <!-- People tab -->
+    <!-- People -->
     <div class="panel-body" id="tab-people">
-      <div class="panel-section-label">Organiser</div>
-      <div class="participant-item">
-        <div class="participant-avatar">{{ meeting.organizer.username|first|upper }}</div>
+      <div class="sec-lbl">Organiser</div>
+      <div class="person-item">
+        <div class="person-av">{{ meeting.organizer.username|first|upper }}</div>
         <div>
           <div style="font-size:13px;font-weight:500;">{{ meeting.organizer.get_full_name|default:meeting.organizer.username }}</div>
           <div style="font-size:11px;color:var(--text-dim);">Organiser</div>
         </div>
       </div>
-      <div class="panel-section-label" style="margin-top:12px;">Attendees</div>
+      <div class="sec-lbl" style="margin-top:10px;">Attendees</div>
       {% for a in meeting.attendees.all %}
-      <div class="participant-item">
-        <div class="participant-avatar" style="background:var(--blue);">{{ a.username|first|upper }}</div>
+      <div class="person-item">
+        <div class="person-av" style="background:var(--blue);">{{ a.username|first|upper }}</div>
         <div>
           <div style="font-size:13px;font-weight:500;">{{ a.get_full_name|default:a.username }}</div>
           <div style="font-size:11px;color:var(--text-dim);">Attendee</div>
         </div>
       </div>
       {% empty %}
-        <div style="color:var(--text-dim);font-size:13px;">No attendees added.</div>
+        <div style="color:var(--text-dim);font-size:13px;">No attendees.</div>
       {% endfor %}
     </div>
-
   </div>
 </div>
 {% endblock %}
@@ -238,30 +196,27 @@
 {% block extra_js %}
 <script src="https://meet.jit.si/external_api.js"></script>
 <script>
-const MEETING_PK = '{{ meeting.pk }}';
+// ── Config ──
 const TRANSCRIBE_URL = '{% url "transcribe_audio" meeting.pk %}';
-const CSRF_TOKEN = '{{ csrf_token }}';
+const CSRF = '{{ csrf_token }}';
+const NOTES_KEY = 'mw-notes-{{ meeting.pk }}';
 
 // ── Jitsi ──
-const api = new JitsiMeetExternalAPI('meet.jit.si', {
+new JitsiMeetExternalAPI('meet.jit.si', {
   roomName: 'meetwise-{{ meeting.pk|stringformat:"s"|slice:"0:8" }}',
   parentNode: document.getElementById('jitsi-container'),
   userInfo: { displayName: '{{ user_name }}' },
   configOverwrite: { startWithAudioMuted: false, startWithVideoMuted: false },
-  interfaceConfigOverwrite: {
-    TOOLBAR_BUTTONS: ['microphone','camera','closedcaptions','desktop','chat','participants-pane','tileview','hangup']
-  }
 });
 
 // ── Timer ──
-let seconds = 0;
-const timerEl = document.getElementById('timer');
+let secs = 0;
 setInterval(() => {
-  seconds++;
-  const h = String(Math.floor(seconds / 3600)).padStart(2, '0');
-  const m = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0');
-  const s = String(seconds % 60).padStart(2, '0');
-  timerEl.textContent = `${h}:${m}:${s}`;
+  secs++;
+  const h = String(Math.floor(secs/3600)).padStart(2,'0');
+  const m = String(Math.floor((secs%3600)/60)).padStart(2,'0');
+  const s = String(secs%60).padStart(2,'0');
+  document.getElementById('timerDisplay').textContent = `${h}:${m}:${s}`;
 }, 1000);
 
 // ── Tabs ──
@@ -272,106 +227,91 @@ function switchTab(btn, id) {
   document.getElementById('tab-' + id).classList.add('active');
 }
 
-// ── Notes (persisted in localStorage) ──
-const notesKey = 'meetwise-notes-{{ meeting.pk }}';
+// ── Notes ──
 const notesEl = document.getElementById('liveNotes');
-notesEl.value = localStorage.getItem(notesKey) || '';
-notesEl.addEventListener('input', () => localStorage.setItem(notesKey, notesEl.value));
+notesEl.value = localStorage.getItem(NOTES_KEY) || '';
+notesEl.addEventListener('input', () => localStorage.setItem(NOTES_KEY, notesEl.value));
 function copyNotes() {
-  navigator.clipboard.writeText(notesEl.value).then(() => alert('Notes copied to clipboard.'));
+  navigator.clipboard.writeText(notesEl.value).then(() => alert('Notes copied.'));
 }
 
-// ── Agenda ──
-function toggleAgenda(cb, id) {
-  document.getElementById(id).classList.toggle('done', cb.checked);
-}
+// ── Transcription ──
+// Uses stop/restart cycle so every chunk is a complete, valid audio file.
+// Time-sliced chunks break because only the first slice has codec headers.
 
-// ── Transcription — MediaRecorder → local Faster-Whisper ──
-// Uses stop/restart cycle so every chunk is a complete valid WebM file.
-// Time-sliced chunks (the old approach) only put codec headers in the
-// first chunk, making all subsequent chunks unreadable by ffmpeg.
+let mediaStream   = null;
+let mediaRecorder = null;
+let audioChunks   = [];
+let isRecording   = false;
+let fullText      = '';
+let chunkTimer    = null;
 
-let mediaStream    = null;
-let mediaRecorder  = null;
-let audioChunks    = [];
-let isRecording    = false;
-let fullTranscript = '';
-let isProcessing   = false;
-let chunkTimer     = null;
+const startBtn     = document.getElementById('startBtn');
+const stopBtn      = document.getElementById('stopBtn');
+const recPill      = document.getElementById('recPill');
+const tStatus      = document.getElementById('tStatus');
+const transcriptBox = document.getElementById('transcriptBox');
 
-const CHUNK_SECONDS = 8000; // ms between transcription chunks
-
-const transcriptBox  = document.getElementById('transcriptBox');
-const startBtn       = document.getElementById('startBtn');
-const stopBtn        = document.getElementById('stopBtn');
-const recPill        = document.getElementById('recPill');
-const chunkStatus    = document.getElementById('chunkStatus');
-const chunkProgress  = document.getElementById('chunkProgress');
-const chunkBar       = document.getElementById('chunkBar');
-
-// Pick best supported format
-function getMimeType() {
-  const types = [
-    'audio/webm;codecs=opus',
-    'audio/webm',
-    'audio/ogg;codecs=opus',
-    'audio/ogg',
-  ];
+function bestMimeType() {
+  const types = ['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/ogg','audio/mp4'];
   return types.find(t => MediaRecorder.isTypeSupported(t)) || '';
 }
 
 async function startRecording() {
   try {
     mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-    isRecording = true;
-    startBtn.style.display = 'none';
-    stopBtn.style.display  = '';
-    recPill.classList.add('active');
-    transcriptBox.innerHTML = '<span style="color:var(--text-dim);font-size:12px;">Listening… first transcription appears after 8 seconds.</span>';
-    recordCycle();
-  } catch (err) {
-    alert('Microphone access denied: ' + err.message);
+  } catch(e) {
+    alert('Microphone access denied: ' + e.message);
+    return;
   }
+  isRecording = true;
+  fullText = '';
+  transcriptBox.innerHTML = '<span style="color:var(--text-dim);font-size:12px;">Listening… first transcription appears after 8 seconds.</span>';
+  startBtn.style.display = 'none';
+  stopBtn.style.display  = '';
+  recPill.classList.add('on');
+  tStatus.textContent = '';
+  doChunk();
 }
 
-function recordCycle() {
+function doChunk() {
   if (!isRecording || !mediaStream) return;
 
   audioChunks = [];
-  const mimeType = getMimeType();
-  const options  = mimeType ? { mimeType } : {};
-
-  mediaRecorder = new MediaRecorder(mediaStream, options);
+  const mime = bestMimeType();
+  try {
+    mediaRecorder = new MediaRecorder(mediaStream, mime ? { mimeType: mime } : {});
+  } catch(e) {
+    mediaRecorder = new MediaRecorder(mediaStream);
+  }
 
   mediaRecorder.ondataavailable = e => {
     if (e.data && e.data.size > 0) audioChunks.push(e.data);
   };
 
-  // When this recorder stops, we have a complete valid file — send it
   mediaRecorder.onstop = () => {
     if (audioChunks.length > 0) {
-      const blob = new Blob(audioChunks, { type: mimeType || 'audio/webm' });
-      sendChunk(blob);
+      const blob = new Blob(audioChunks, { type: mime || 'audio/webm' });
+      if (blob.size > 2000) sendAudio(blob);   // skip near-silence
     }
-    // Start next cycle if still recording
-    if (isRecording) recordCycle();
+    if (isRecording) doChunk();  // start next cycle immediately
   };
 
-  mediaRecorder.start();  // no timeslice — records until .stop() is called
+  mediaRecorder.start();  // no timeslice = complete valid file on stop
 
-  // Stop after CHUNK_SECONDS to trigger onstop and send the chunk
+  // Stop after 8 seconds to send the chunk
   chunkTimer = setTimeout(() => {
     if (mediaRecorder && mediaRecorder.state === 'recording') {
       mediaRecorder.stop();
     }
-  }, CHUNK_SECONDS);
+  }, 8000);
 }
 
 function stopRecording() {
   isRecording = false;
   clearTimeout(chunkTimer);
   if (mediaRecorder && mediaRecorder.state === 'recording') {
-    mediaRecorder.stop(); // onstop will fire and send final chunk
+    mediaRecorder.stop();
   }
   if (mediaStream) {
     mediaStream.getTracks().forEach(t => t.stop());
@@ -379,61 +319,45 @@ function stopRecording() {
   }
   startBtn.style.display = '';
   stopBtn.style.display  = 'none';
-  recPill.classList.remove('active');
+  recPill.classList.remove('on');
+  tStatus.textContent = '';
 }
 
-async function sendChunk(blob) {
-  if (blob.size < 1000) return; // skip near-silent chunks
-
-  isProcessing = true;
-  chunkStatus.textContent = '⟳ Transcribing…';
-  chunkProgress.classList.add('active');
-  chunkBar.style.width = '60%';
-
-  const formData = new FormData();
-  formData.append('audio', blob, 'chunk.webm');
-
+async function sendAudio(blob) {
+  tStatus.textContent = '⟳ Transcribing…';
+  const fd = new FormData();
+  fd.append('audio', blob, 'audio.webm');
   try {
-    const res = await fetch(TRANSCRIBE_URL, {
+    const res  = await fetch(TRANSCRIBE_URL, {
       method: 'POST',
-      headers: { 'X-CSRFToken': CSRF_TOKEN },
-      body: formData,
+      headers: { 'X-CSRFToken': CSRF },
+      body: fd,
     });
-
-    chunkBar.style.width = '100%';
     const data = await res.json();
-
     if (data.success && data.text) {
-      fullTranscript += (fullTranscript ? ' ' : '') + data.text;
-      transcriptBox.innerHTML = '<span>' + fullTranscript + '</span>';
+      fullText += (fullText ? ' ' : '') + data.text;
+      transcriptBox.innerHTML = '<span>' + fullText + '</span>';
       transcriptBox.scrollTop = transcriptBox.scrollHeight;
-      chunkStatus.textContent = '✓ Transcribed';
+      tStatus.textContent = '✓ Transcribed';
+      setTimeout(() => { if(tStatus.textContent.startsWith('✓')) tStatus.textContent=''; }, 2000);
     } else {
-      chunkStatus.textContent = data.error ? '✗ ' + data.error : '✗ Empty result';
+      tStatus.textContent = data.error ? '✗ ' + data.error : '✗ No speech detected';
     }
-  } catch (e) {
-    chunkStatus.textContent = '✗ Network error';
-  } finally {
-    isProcessing = false;
-    setTimeout(() => {
-      chunkProgress.classList.remove('active');
-      chunkBar.style.width = '0%';
-      if (chunkStatus.textContent.startsWith('✓')) chunkStatus.textContent = '';
-    }, 2000);
+  } catch(e) {
+    tStatus.textContent = '✗ Network error';
   }
 }
 
 function appendToNotes() {
-  if (!fullTranscript.trim()) { alert('No transcript yet.'); return; }
-  const existing = notesEl.value;
-  notesEl.value = existing + (existing ? '\n\n' : '') + '[Transcript]\n' + fullTranscript.trim();
-  localStorage.setItem(notesKey, notesEl.value);
-  alert('Transcript appended to Notes.');
+  if (!fullText.trim()) { alert('No transcript yet.'); return; }
+  notesEl.value += (notesEl.value ? '\n\n' : '') + '[Transcript]\n' + fullText.trim();
+  localStorage.setItem(NOTES_KEY, notesEl.value);
+  alert('Appended to Notes tab.');
 }
 
 function clearTranscript() {
-  fullTranscript = '';
-  transcriptBox.innerHTML = '<span style="color:var(--text-dim);font-size:12px;">Transcript cleared.</span>';
+  fullText = '';
+  transcriptBox.innerHTML = '<span style="color:var(--text-dim);font-size:12px;">Cleared.</span>';
 }
 </script>
 {% endblock %}

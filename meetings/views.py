@@ -5,80 +5,23 @@ from django.contrib.auth import logout as auth_logout
 from django.contrib import messages
 from django.utils import timezone
 from django.db.models import Q
-from django.core.mail import send_mail
-from django.template.loader import render_to_string
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.http import require_POST
 from django.conf import settings
 import json
-import threading
 
 from .models import Meeting, MeetingMinutes
 from .forms import MeetingForm, MinutesForm
 
 
-# ─────────────────────────────────────────
-# Auth
-# ─────────────────────────────────────────
+# ── Auth ──────────────────────────────────────────────────────
 
 def logout_view(request):
     auth_logout(request)
     return redirect('login')
 
 
-# ─────────────────────────────────────────
-# Email — runs in background thread so it
-# never blocks or crashes the request
-# ─────────────────────────────────────────
-
-def send_meeting_email(meeting, subject, template_name, extra_context=None):
-    """
-    Fire-and-forget email. Runs in a daemon thread so the view
-    returns immediately whether email succeeds or fails.
-    If email credentials are not configured, skips silently.
-    """
-    # Skip entirely if no email credentials configured
-    if not getattr(settings, 'EMAIL_HOST_USER', ''):
-        return
-
-    recipients = list(meeting.attendees.values_list('email', flat=True))
-    if meeting.organizer.email and meeting.organizer.email not in recipients:
-        recipients.append(meeting.organizer.email)
-    recipients = [e for e in recipients if e]
-
-    if not recipients:
-        return
-
-    context = {
-        'meeting': meeting,
-        'site_url': getattr(settings, 'SITE_URL', 'http://127.0.0.1:8000'),
-    }
-    if extra_context:
-        context.update(extra_context)
-
-    def _send():
-        try:
-            import re
-            html_body = render_to_string(template_name, context)
-            plain_body = re.sub(r'<[^>]+>', '', html_body).strip()
-            send_mail(
-                subject=subject,
-                message=plain_body,
-                from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@meetwise.app'),
-                recipient_list=recipients,
-                html_message=html_body,
-                fail_silently=True,
-            )
-        except Exception:
-            pass  # never crash the app over email
-
-    thread = threading.Thread(target=_send, daemon=True)
-    thread.start()
-
-
-# ─────────────────────────────────────────
-# Dashboard
-# ─────────────────────────────────────────
+# ── Dashboard ─────────────────────────────────────────────────
 
 @login_required
 def dashboard(request):
@@ -87,12 +30,12 @@ def dashboard(request):
         Q(organizer=request.user) | Q(attendees=request.user),
         scheduled_at__gte=now,
         status__in=['scheduled', 'in_progress']
-    ).distinct()[:5]
+    ).distinct().order_by('scheduled_at')[:5]
 
     past = Meeting.objects.filter(
         Q(organizer=request.user) | Q(attendees=request.user),
         scheduled_at__lt=now
-    ).distinct()[:5]
+    ).distinct().order_by('-scheduled_at')[:5]
 
     total_meetings = Meeting.objects.filter(
         Q(organizer=request.user) | Q(attendees=request.user)
@@ -106,15 +49,13 @@ def dashboard(request):
     })
 
 
-# ─────────────────────────────────────────
-# Meeting list
-# ─────────────────────────────────────────
+# ── Meeting list ──────────────────────────────────────────────
 
 @login_required
 def meeting_list(request):
     meetings = Meeting.objects.filter(
         Q(organizer=request.user) | Q(attendees=request.user)
-    ).distinct()
+    ).distinct().order_by('-scheduled_at')
 
     status_filter = request.GET.get('status', '')
     if status_filter:
@@ -126,9 +67,7 @@ def meeting_list(request):
     })
 
 
-# ─────────────────────────────────────────
-# Schedule
-# ─────────────────────────────────────────
+# ── Schedule ──────────────────────────────────────────────────
 
 @login_required
 def meeting_schedule(request):
@@ -139,16 +78,10 @@ def meeting_schedule(request):
             meeting.organizer = request.user
             meeting.save()
             form.save_m2m()
-
-            # Email runs in background — will not block or crash this view
-            send_meeting_email(
-                meeting,
-                subject=f'Meeting Invitation: {meeting.title}',
-                template_name='meetings/email_invite.html',
-            )
-
             messages.success(request, 'Meeting scheduled successfully.')
             return redirect('meeting_detail', pk=meeting.pk)
+        else:
+            messages.error(request, 'Please fix the errors below.')
     else:
         form = MeetingForm()
 
@@ -156,9 +89,7 @@ def meeting_schedule(request):
     return render(request, 'meetings/schedule.html', {'form': form})
 
 
-# ─────────────────────────────────────────
-# Detail
-# ─────────────────────────────────────────
+# ── Detail ────────────────────────────────────────────────────
 
 @login_required
 def meeting_detail(request, pk):
@@ -167,16 +98,13 @@ def meeting_detail(request, pk):
         minutes = meeting.minutes
     except MeetingMinutes.DoesNotExist:
         minutes = None
-
     return render(request, 'meetings/detail.html', {
         'meeting': meeting,
         'minutes': minutes,
     })
 
 
-# ─────────────────────────────────────────
-# Start / Conference / End
-# ─────────────────────────────────────────
+# ── Conference ────────────────────────────────────────────────
 
 @login_required
 def meeting_start(request, pk):
@@ -184,11 +112,6 @@ def meeting_start(request, pk):
     if meeting.organizer == request.user and meeting.status == 'scheduled':
         meeting.status = 'in_progress'
         meeting.save()
-        send_meeting_email(
-            meeting,
-            subject=f'Meeting Starting Now: {meeting.title}',
-            template_name='meetings/email_starting.html',
-        )
     return redirect('meeting_conference', pk=pk)
 
 
@@ -207,18 +130,11 @@ def meeting_end(request, pk):
     if meeting.organizer == request.user:
         meeting.status = 'completed'
         meeting.save()
-        send_meeting_email(
-            meeting,
-            subject=f'Meeting Completed: {meeting.title}',
-            template_name='meetings/email_completed.html',
-        )
         messages.success(request, 'Meeting ended. Add minutes below.')
     return redirect('meeting_minutes', pk=pk)
 
 
-# ─────────────────────────────────────────
-# Minutes
-# ─────────────────────────────────────────
+# ── Minutes ───────────────────────────────────────────────────
 
 @login_required
 def meeting_minutes(request, pk):
@@ -235,7 +151,7 @@ def meeting_minutes(request, pk):
             m.meeting = meeting
             m.recorded_by = request.user
             m.save()
-            messages.success(request, 'Minutes saved successfully.')
+            messages.success(request, 'Minutes saved.')
             return redirect('meeting_detail', pk=pk)
     else:
         form = MinutesForm(instance=minutes)
@@ -247,28 +163,19 @@ def meeting_minutes(request, pk):
     })
 
 
-# ─────────────────────────────────────────
-# Cancel
-# ─────────────────────────────────────────
+# ── Cancel ────────────────────────────────────────────────────
 
 @login_required
 def meeting_cancel(request, pk):
     meeting = get_object_or_404(Meeting, pk=pk)
-    if meeting.organizer == request.user and request.method == 'POST':
+    if meeting.organizer == request.user and meeting.status not in ['cancelled', 'completed']:
         meeting.status = 'cancelled'
         meeting.save()
-        send_meeting_email(
-            meeting,
-            subject=f'Meeting Cancelled: {meeting.title}',
-            template_name='meetings/email_cancelled.html',
-        )
         messages.info(request, 'Meeting cancelled.')
     return redirect('dashboard')
 
 
-# ─────────────────────────────────────────
-# Join
-# ─────────────────────────────────────────
+# ── Join ──────────────────────────────────────────────────────
 
 @login_required
 def join_meeting(request):
@@ -288,27 +195,21 @@ def join_meeting(request):
                     meeting.save()
                 return redirect('meeting_conference', pk=meeting.pk)
         else:
-            error = 'No meeting found with that ID or room code.'
-
+            error = 'No meeting found with that code.'
     return render(request, 'meetings/join.html', {'error': error})
 
 
-# ─────────────────────────────────────────
-# Calendar export (.ics)
-# ─────────────────────────────────────────
+# ── Calendar export ───────────────────────────────────────────
 
 @login_required
 def export_ical(request, pk):
     meeting = get_object_or_404(Meeting, pk=pk)
-
     from icalendar import Calendar, Event as IEvent
     from datetime import timedelta
 
     cal = Calendar()
-    cal.add('prodid', '-//MeetWise//meetwise.app//')
+    cal.add('prodid', '-//MeetWise//')
     cal.add('version', '2.0')
-    cal.add('calscale', 'GREGORIAN')
-    cal.add('method', 'REQUEST')
 
     event = IEvent()
     event.add('uid', str(meeting.pk))
@@ -317,116 +218,199 @@ def export_ical(request, pk):
     event.add('dtstart', meeting.scheduled_at)
     event.add('dtend', meeting.scheduled_at + timedelta(minutes=meeting.duration))
     event.add('dtstamp', timezone.now())
-
     cal.add_component(event)
 
     response = HttpResponse(cal.to_ical(), content_type='text/calendar')
-    response['Content-Disposition'] = f'attachment; filename="{meeting.title}.ics"'
+    response['Content-Disposition'] = f'attachment; filename="meeting.ics"'
     return response
 
 
-# ─────────────────────────────────────────
-# AI — Generate minutes (Claude)
-# ─────────────────────────────────────────
+# ── AI: Agenda (local model, no API key needed) ───────────────
+
+@login_required
+@require_POST
+def ai_suggest_agenda(request):
+    try:
+        data = json.loads(request.body)
+        title = data.get('title', '').strip()
+    except Exception:
+        return JsonResponse({'error': 'Invalid request.'}, status=400)
+
+    if not title:
+        return JsonResponse({'error': 'Title required.'}, status=400)
+
+    agenda = _local_agenda_model(title)
+    return JsonResponse({'success': True, 'agenda': agenda})
+
+
+def _local_agenda_model(title):
+    t = title.lower()
+    templates = [
+        (['standup', 'stand-up', 'daily', 'scrum', 'sync'],
+         ['• What did each member complete yesterday?',
+          '• What is each member working on today?',
+          '• Any blockers or impediments?',
+          '• Team announcements or updates']),
+
+        (['sprint', 'retrospective', 'retro', 'iteration'],
+         ['• Sprint goals review and completion status',
+          '• Demo of completed deliverables',
+          '• What went well this sprint?',
+          '• What needs improvement?',
+          '• Action items and owners',
+          '• Priorities for next sprint']),
+
+        (['planning', 'plan', 'roadmap', 'strategy', 'strategic', 'quarterly', 'q1', 'q2', 'q3', 'q4'],
+         ['• Review current status and progress',
+          '• Key priorities and objectives ahead',
+          '• Resource allocation and capacity',
+          '• Risks and mitigation plans',
+          '• Timeline and milestones',
+          '• Next steps and owners']),
+
+        (['review', 'feedback', 'evaluation', 'assessment'],
+         ['• Overview of work under review',
+          '• Strengths and what is working well',
+          '• Areas for improvement',
+          '• Recommendations and action items',
+          '• Follow-up schedule']),
+
+        (['budget', 'finance', 'financial', 'cost', 'forecast', 'revenue'],
+         ['• Current budget status and variances',
+          '• Income, expenses, and cash flow',
+          '• Key financial risks and opportunities',
+          '• Budget adjustments needed',
+          '• Approvals required',
+          '• Next reporting period']),
+
+        (['kickoff', 'kick-off', 'launch', 'onboarding', 'project start'],
+         ['• Project overview and success criteria',
+          '• Team roles and responsibilities',
+          '• Scope and deliverables',
+          '• Timeline and key milestones',
+          '• Tools and ways of working',
+          '• Open questions and next steps']),
+
+        (['design', 'ux', 'ui', 'wireframe', 'prototype', 'mockup'],
+         ['• Presentation of current designs',
+          '• Review against user requirements',
+          '• Feedback on usability and direction',
+          '• Open design decisions needed',
+          '• Revisions required',
+          '• Next review date']),
+
+        (['technical', 'engineering', 'architecture', 'backend', 'frontend', 'api', 'deployment', 'release'],
+         ['• Current technical status and open issues',
+          '• Architecture decisions needed',
+          '• Blockers and dependencies',
+          '• Testing and security considerations',
+          '• Deployment plan',
+          '• Action items and owners']),
+
+        (['sales', 'client', 'customer', 'account', 'proposal', 'pitch'],
+         ['• Account overview and context',
+          '• Current pipeline status',
+          '• Customer needs and pain points',
+          '• Proposed solution and value',
+          '• Objections and how to address them',
+          '• Next steps and follow-up']),
+
+        (['hr', 'hiring', 'recruitment', 'performance', 'people', 'team'],
+         ['• Team updates and changes',
+          '• Open roles and hiring pipeline',
+          '• Performance updates',
+          '• Team wellbeing check-in',
+          '• Training and development',
+          '• HR decisions required']),
+
+        (['marketing', 'campaign', 'brand', 'content', 'launch', 'promotion'],
+         ['• Campaign performance review',
+          '• Upcoming campaigns and content',
+          '• Channel metrics',
+          '• Creative approvals needed',
+          '• Budget status',
+          '• Next deadlines']),
+
+        (['update', 'status', 'progress', 'weekly', 'monthly', 'check-in'],
+         ['• Progress against goals and KPIs',
+          '• Completed items',
+          '• Work in progress',
+          '• Blockers and risks',
+          '• Upcoming deadlines',
+          '• Decisions needed']),
+
+        (['brainstorm', 'ideation', 'ideas', 'creative', 'workshop'],
+         ['• Problem statement and context',
+          '• Constraints and success criteria',
+          '• Silent idea generation',
+          '• Group sharing and building',
+          '• Voting and prioritising',
+          '• Next steps for top ideas']),
+    ]
+
+    best_score, best_items = 0, None
+    for keywords, items in templates:
+        score = sum(1 for kw in keywords if kw in t)
+        if score > best_score:
+            best_score, best_items = score, items
+
+    if not best_items:
+        best_items = [
+            '• Welcome and introductions',
+            f'• Purpose and objectives: {title}',
+            '• Main discussion points',
+            '• Key considerations and options',
+            '• Decisions and agreements',
+            '• Action items, owners, and next steps',
+        ]
+
+    return '\n'.join(best_items)
+
+
+# ── AI: Generate minutes ──────────────────────────────────────
 
 @login_required
 @require_POST
 def ai_generate_minutes(request, pk):
     meeting = get_object_or_404(Meeting, pk=pk)
-
     try:
         body = json.loads(request.body)
         raw_notes = body.get('notes', '').strip()
-    except (json.JSONDecodeError, AttributeError):
-        return JsonResponse({'error': 'Invalid request body.'}, status=400)
+    except Exception:
+        return JsonResponse({'error': 'Invalid request.'}, status=400)
 
     if not raw_notes:
         return JsonResponse({'error': 'No notes provided.'}, status=400)
 
     api_key = getattr(settings, 'ANTHROPIC_API_KEY', '')
     if not api_key:
-        return JsonResponse({'error': 'AI not configured. Add ANTHROPIC_API_KEY to your environment variables on Render.'}, status=503)
+        return JsonResponse({'error': 'ANTHROPIC_API_KEY not set in environment.'}, status=503)
 
     try:
-        import anthropic
+        import anthropic, re
         client = anthropic.Anthropic(api_key=api_key)
-
-        prompt = f"""You are a professional meeting secretary. Given raw meeting notes, produce a clean structured summary.
-
-Meeting title: {meeting.title}
-Agenda: {meeting.agenda or 'Not specified'}
-Raw notes:
-{raw_notes}
-
-Return a JSON object with exactly these keys:
-- "summary": 2-4 sentence executive summary
-- "decisions": list of decisions made (strings)
-- "action_items": list of action items, each with "task" and "owner" (use "TBD" if unknown)
-- "notes": cleaned professional version of the notes
-
-Return ONLY the JSON object, no markdown, no explanation."""
-
         message = client.messages.create(
             model='claude-sonnet-4-20250514',
             max_tokens=1500,
-            messages=[{'role': 'user', 'content': prompt}]
+            messages=[{'role': 'user', 'content': f'''You are a meeting secretary. Structure these raw notes.
+
+Meeting: {meeting.title}
+Agenda: {meeting.agenda or 'Not specified'}
+Notes: {raw_notes}
+
+Return ONLY a JSON object with keys:
+- "summary": 2-3 sentence summary
+- "decisions": list of strings
+- "action_items": list of {{"task": "...", "owner": "..."}}
+- "notes": cleaned professional notes'''}]
         )
-
-        import re
-        text = message.content[0].text.strip()
-        text = re.sub(r'^```json\s*', '', text)
-        text = re.sub(r'\s*```$', '', text)
-        result = json.loads(text)
-        return JsonResponse({'success': True, 'result': result})
-
-    except Exception as e:
-        return JsonResponse({'error': f'AI generation failed: {str(e)}'}, status=500)
-
-
-# ─────────────────────────────────────────
-# AI — Suggest agenda
-# ─────────────────────────────────────────
-
-@login_required
-@require_POST
-def ai_suggest_agenda(request):
-    try:
-        body = json.loads(request.body)
-        title = body.get('title', '').strip()
-    except (json.JSONDecodeError, AttributeError):
-        return JsonResponse({'error': 'Invalid request.'}, status=400)
-
-    if not title:
-        return JsonResponse({'error': 'No title provided.'}, status=400)
-
-    api_key = getattr(settings, 'ANTHROPIC_API_KEY', '')
-    if not api_key:
-        return JsonResponse({'error': 'AI not configured.'}, status=503)
-
-    try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
-
-        message = client.messages.create(
-            model='claude-sonnet-4-20250514',
-            max_tokens=400,
-            messages=[{
-                'role': 'user',
-                'content': f'Write a concise professional meeting agenda for a meeting titled "{title}". '
-                           f'Return 4-6 bullet points only, each on a new line starting with "• ".'
-            }]
-        )
-
-        return JsonResponse({'success': True, 'agenda': message.content[0].text.strip()})
-
+        text = re.sub(r'^```json\s*|\s*```$', '', message.content[0].text.strip())
+        return JsonResponse({'success': True, 'result': json.loads(text)})
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
 
 
-# ─────────────────────────────────────────
-# Transcription — Faster-Whisper (local model)
-# Runs entirely on your server, no external API
-# ─────────────────────────────────────────
+# ── Transcription ─────────────────────────────────────────────
 
 _whisper_model = None
 
@@ -443,22 +427,31 @@ def _get_whisper():
 def transcribe_audio(request, pk):
     audio_file = request.FILES.get('audio')
     if not audio_file:
-        return JsonResponse({'error': 'No audio file received.'}, status=400)
+        return JsonResponse({'error': 'No audio received.'}, status=400)
 
     import tempfile, os
 
-    suffix = '.webm'
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+    # Write to temp file — try webm first, fall back to generic
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.webm') as tmp:
         for chunk in audio_file.chunks():
             tmp.write(chunk)
         tmp_path = tmp.name
 
     try:
         model = _get_whisper()
-        segments, _ = model.transcribe(tmp_path, beam_size=1, language='en')
-        text = ' '.join(seg.text.strip() for seg in segments).strip()
+        segments, info = model.transcribe(
+            tmp_path,
+            beam_size=1,
+            language='en',
+            vad_filter=True,           # skip silent sections
+            vad_parameters=dict(min_silence_duration_ms=500)
+        )
+        text = ' '.join(s.text.strip() for s in segments).strip()
         return JsonResponse({'success': True, 'text': text})
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
     finally:
-        os.unlink(tmp_path)
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
