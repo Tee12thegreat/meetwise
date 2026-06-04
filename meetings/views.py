@@ -71,22 +71,57 @@ def meeting_list(request):
 
 @login_required
 def meeting_schedule(request):
-    if request.method == 'POST':
-        form = MeetingForm(request.POST)
-        if form.is_valid():
-            meeting = form.save(commit=False)
-            meeting.organizer = request.user
-            meeting.save()
-            form.save_m2m()
-            messages.success(request, 'Meeting scheduled successfully.')
-            return redirect('meeting_detail', pk=meeting.pk)
-        else:
-            messages.error(request, 'Please fix the errors below.')
-    else:
-        form = MeetingForm()
+    all_users = User.objects.exclude(pk=request.user.pk)
+    errors = []
+    post = {}
 
-    form.fields['attendees'].queryset = User.objects.exclude(pk=request.user.pk)
-    return render(request, 'meetings/schedule.html', {'form': form})
+    if request.method == 'POST':
+        post = request.POST
+        title         = post.get('title', '').strip()
+        description   = post.get('description', '').strip()
+        agenda        = post.get('agenda', '').strip()
+        scheduled_str = post.get('scheduled_at', '').strip()
+        duration_str  = post.get('duration_minutes', '60').strip()
+        attendee_ids  = post.getlist('attendees')
+
+        if not title:
+            errors.append('Meeting title is required.')
+        if not scheduled_str:
+            errors.append('Date and time is required.')
+        if not duration_str:
+            errors.append('Duration is required.')
+
+        if not errors:
+            try:
+                from datetime import datetime as dt
+                scheduled_at = dt.strptime(scheduled_str, '%Y-%m-%dT%H:%M')
+                if timezone.is_naive(scheduled_at):
+                    scheduled_at = timezone.make_aware(scheduled_at)
+
+                meeting = Meeting(
+                    title=title,
+                    description=description,
+                    agenda=agenda,
+                    scheduled_at=scheduled_at,
+                    duration_minutes=int(duration_str),
+                    organizer=request.user,
+                )
+                meeting.save()
+
+                if attendee_ids:
+                    meeting.attendees.set(User.objects.filter(pk__in=attendee_ids))
+
+                messages.success(request, 'Meeting scheduled successfully.')
+                return redirect('meeting_detail', pk=meeting.pk)
+
+            except Exception as e:
+                errors.append(f'Could not save: {str(e)}')
+
+    return render(request, 'meetings/schedule.html', {
+        'all_users': all_users,
+        'errors': errors,
+        'post': post,
+    })
 
 
 # ── Detail ────────────────────────────────────────────────────
