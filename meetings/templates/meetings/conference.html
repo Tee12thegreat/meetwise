@@ -287,68 +287,95 @@ function toggleAgenda(cb, id) {
 }
 
 // ── Transcription — MediaRecorder → local Faster-Whisper ──
-let mediaRecorder = null;
-let audioChunks = [];
-let chunkInterval = null;
-let fullTranscript = '';
-let isProcessing = false;
+// Uses stop/restart cycle so every chunk is a complete valid WebM file.
+// Time-sliced chunks (the old approach) only put codec headers in the
+// first chunk, making all subsequent chunks unreadable by ffmpeg.
 
-const transcriptBox = document.getElementById('transcriptBox');
-const startBtn     = document.getElementById('startBtn');
-const stopBtn      = document.getElementById('stopBtn');
-const recPill      = document.getElementById('recPill');
-const chunkStatus  = document.getElementById('chunkStatus');
-const chunkProgress = document.getElementById('chunkProgress');
-const chunkBar     = document.getElementById('chunkBar');
+let mediaStream    = null;
+let mediaRecorder  = null;
+let audioChunks    = [];
+let isRecording    = false;
+let fullTranscript = '';
+let isProcessing   = false;
+let chunkTimer     = null;
+
+const CHUNK_SECONDS = 8000; // ms between transcription chunks
+
+const transcriptBox  = document.getElementById('transcriptBox');
+const startBtn       = document.getElementById('startBtn');
+const stopBtn        = document.getElementById('stopBtn');
+const recPill        = document.getElementById('recPill');
+const chunkStatus    = document.getElementById('chunkStatus');
+const chunkProgress  = document.getElementById('chunkProgress');
+const chunkBar       = document.getElementById('chunkBar');
+
+// Pick best supported format
+function getMimeType() {
+  const types = [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/ogg;codecs=opus',
+    'audio/ogg',
+  ];
+  return types.find(t => MediaRecorder.isTypeSupported(t)) || '';
+}
 
 async function startRecording() {
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-
-    // Prefer webm/opus; fall back to whatever the browser supports
-    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-      ? 'audio/webm;codecs=opus'
-      : 'audio/webm';
-
-    mediaRecorder = new MediaRecorder(stream, { mimeType });
-
-    mediaRecorder.ondataavailable = e => {
-      if (e.data && e.data.size > 0) audioChunks.push(e.data);
-    };
-
-    // Collect a chunk every 8 seconds, then send for transcription
-    mediaRecorder.start(8000);
-
-    // After each 8-second chunk arrives, send it
-    chunkInterval = setInterval(() => {
-      if (audioChunks.length === 0 || isProcessing) return;
-      const blob = new Blob(audioChunks, { type: mimeType });
-      audioChunks = [];
-      sendChunk(blob);
-    }, 8500); // slightly after the 8s slice
-
+    mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    isRecording = true;
     startBtn.style.display = 'none';
     stopBtn.style.display  = '';
     recPill.classList.add('active');
     transcriptBox.innerHTML = '<span style="color:var(--text-dim);font-size:12px;">Listening… first transcription appears after 8 seconds.</span>';
-
+    recordCycle();
   } catch (err) {
-    alert('Microphone access denied or unavailable: ' + err.message);
+    alert('Microphone access denied: ' + err.message);
   }
 }
 
+function recordCycle() {
+  if (!isRecording || !mediaStream) return;
+
+  audioChunks = [];
+  const mimeType = getMimeType();
+  const options  = mimeType ? { mimeType } : {};
+
+  mediaRecorder = new MediaRecorder(mediaStream, options);
+
+  mediaRecorder.ondataavailable = e => {
+    if (e.data && e.data.size > 0) audioChunks.push(e.data);
+  };
+
+  // When this recorder stops, we have a complete valid file — send it
+  mediaRecorder.onstop = () => {
+    if (audioChunks.length > 0) {
+      const blob = new Blob(audioChunks, { type: mimeType || 'audio/webm' });
+      sendChunk(blob);
+    }
+    // Start next cycle if still recording
+    if (isRecording) recordCycle();
+  };
+
+  mediaRecorder.start();  // no timeslice — records until .stop() is called
+
+  // Stop after CHUNK_SECONDS to trigger onstop and send the chunk
+  chunkTimer = setTimeout(() => {
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+      mediaRecorder.stop();
+    }
+  }, CHUNK_SECONDS);
+}
+
 function stopRecording() {
-  clearInterval(chunkInterval);
-  if (mediaRecorder) {
-    mediaRecorder.stop();
-    mediaRecorder.stream.getTracks().forEach(t => t.stop());
-    mediaRecorder = null;
+  isRecording = false;
+  clearTimeout(chunkTimer);
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    mediaRecorder.stop(); // onstop will fire and send final chunk
   }
-  // Send any remaining audio
-  if (audioChunks.length > 0) {
-    const blob = new Blob(audioChunks, { type: 'audio/webm' });
-    audioChunks = [];
-    sendChunk(blob);
+  if (mediaStream) {
+    mediaStream.getTracks().forEach(t => t.stop());
+    mediaStream = null;
   }
   startBtn.style.display = '';
   stopBtn.style.display  = 'none';
