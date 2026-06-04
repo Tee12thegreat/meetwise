@@ -108,3 +108,4 @@ ANTHROPIC_API_KEY = config('ANTHROPIC_API_KEY', default='')
 
 # ── Site URL (used in emails and calendar exports) ────────────
 SITE_URL = config('SITE_URL', default='http://127.0.0.1:8000')
+SESSION_ENGINE = 'django.contrib.sessions.backends.signed_cookies'
