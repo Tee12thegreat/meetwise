@@ -9,54 +9,83 @@
     <form method="post" id="scheduleForm">
       {% csrf_token %}
 
+      {% if form.errors %}
+      <div style="background:rgba(224,85,85,0.1);border:1px solid rgba(224,85,85,0.3);border-radius:8px;padding:12px 16px;margin-bottom:20px;">
+        {% for field, errors in form.errors.items %}
+          {% for error in errors %}
+            <div style="color:var(--red);font-size:13px;">{{ field }}: {{ error }}</div>
+          {% endfor %}
+        {% endfor %}
+      </div>
+      {% endif %}
+
       <div class="form-group">
         <label class="form-label">Meeting Title</label>
         <div style="display:flex;gap:8px;">
-          <input type="text" name="title" id="titleField" class="form-control"
+          <input type="text"
+            name="{{ form.title.html_name }}"
+            id="{{ form.title.id_for_label }}"
+            class="form-control"
             placeholder="e.g. Q3 Planning Session"
-            value="{{ form.title.value|default:'' }}" required>
+            value="{{ form.title.value|default:'' }}"
+            required>
           <button type="button" class="btn btn-outline btn-sm" id="agendaBtn"
             onclick="suggestAgenda()" style="flex-shrink:0;white-space:nowrap;">
             ✦ Agenda
           </button>
         </div>
         <div id="agendaStatus" style="font-size:11px;margin-top:4px;min-height:16px;"></div>
-        {% for e in form.title.errors %}
-          <div style="color:var(--red);font-size:12px;margin-top:4px;">{{ e }}</div>
-        {% endfor %}
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Description</label>
+        <textarea
+          name="{{ form.description.html_name }}"
+          id="{{ form.description.id_for_label }}"
+          class="form-control"
+          rows="2"
+          placeholder="Brief description...">{{ form.description.value|default:'' }}</textarea>
       </div>
 
       <div class="form-group">
         <label class="form-label">Agenda</label>
-        <textarea name="agenda" id="agendaField" class="form-control" rows="5"
-          placeholder="Meeting agenda — or click ✦ Agenda above to generate one from your title">{{ form.agenda.value|default:'' }}</textarea>
+        <textarea
+          name="{{ form.agenda.html_name }}"
+          id="{{ form.agenda.id_for_label }}"
+          class="form-control"
+          rows="5"
+          placeholder="Agenda items — or click ✦ Agenda above to generate">{{ form.agenda.value|default:'' }}</textarea>
       </div>
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
         <div class="form-group">
           <label class="form-label">Date &amp; Time</label>
-          <input type="datetime-local" name="scheduled_at" class="form-control"
-            value="{{ form.scheduled_at.value|default:'' }}" required>
-          {% for e in form.scheduled_at.errors %}
-            <div style="color:var(--red);font-size:12px;margin-top:4px;">{{ e }}</div>
-          {% endfor %}
+          <input type="datetime-local"
+            name="{{ form.scheduled_at.html_name }}"
+            id="{{ form.scheduled_at.id_for_label }}"
+            class="form-control"
+            value="{{ form.scheduled_at.value|default:'' }}"
+            required>
         </div>
         <div class="form-group">
           <label class="form-label">Duration (mins)</label>
-          <input type="number" name="duration" class="form-control"
-            value="{{ form.duration.value|default:'60' }}" min="5" max="480" required>
+          <input type="number"
+            name="{{ form.duration_minutes.html_name }}"
+            id="{{ form.duration_minutes.id_for_label }}"
+            class="form-control"
+            value="{{ form.duration_minutes.value|default:'60' }}"
+            min="15" max="480" step="15"
+            required>
         </div>
       </div>
 
       <div class="form-group">
         <label class="form-label">Attendees</label>
         <div class="checkbox-group">
-          {% for user in form.attendees.field.queryset %}
-          <label class="checkbox-item">
-            <input type="checkbox" name="attendees" value="{{ user.pk }}"
-              {% if form.attendees.value and user.pk|stringformat:"s" in form.attendees.value|stringformat:"s" %}checked{% endif %}>
-            {{ user.get_full_name|default:user.username }}
-          </label>
+          {% for choice in form.attendees %}
+            <label class="checkbox-item">
+              {{ choice.tag }} {{ choice.choice_label }}
+            </label>
           {% empty %}
             <span style="color:var(--text-dim);font-size:13px;">No other users registered yet.</span>
           {% endfor %}
@@ -82,13 +111,15 @@ function getCookie(name) {
 }
 
 async function suggestAgenda() {
-  const title = document.getElementById('titleField').value.trim();
+  const titleEl = document.getElementById('{{ form.title.id_for_label }}');
+  const agendaEl = document.getElementById('{{ form.agenda.id_for_label }}');
   const status = document.getElementById('agendaStatus');
   const btn = document.getElementById('agendaBtn');
+  const title = titleEl.value.trim();
 
   if (!title) {
     status.style.color = 'var(--red)';
-    status.textContent = 'Enter a meeting title first.';
+    status.textContent = 'Enter a title first.';
     return;
   }
 
@@ -106,20 +137,18 @@ async function suggestAgenda() {
       },
       body: JSON.stringify({ title }),
     });
-
     const data = await res.json();
-
-    if (data.success && data.agenda) {
-      document.getElementById('agendaField').value = data.agenda;
+    if (data.success) {
+      agendaEl.value = data.agenda;
       status.style.color = 'var(--green)';
-      status.textContent = '✓ Agenda generated — edit as needed.';
+      status.textContent = '✓ Generated — edit as needed.';
     } else {
       status.style.color = 'var(--red)';
-      status.textContent = '✗ ' + (data.error || 'Could not generate agenda.');
+      status.textContent = '✗ ' + (data.error || 'Failed.');
     }
   } catch (e) {
     status.style.color = 'var(--red)';
-    status.textContent = '✗ Network error — try again.';
+    status.textContent = '✗ Network error.';
   } finally {
     btn.disabled = false;
     btn.textContent = '✦ Agenda';
