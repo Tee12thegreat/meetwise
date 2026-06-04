@@ -292,7 +292,7 @@ function doChunk() {
   mediaRecorder.onstop = () => {
     if (audioChunks.length > 0) {
       const blob = new Blob(audioChunks, { type: mime || 'audio/webm' });
-      if (blob.size > 2000) sendAudio(blob);   // skip near-silence
+      if (blob.size > 500) sendAudio(blob);   // skip near-silence
     }
     if (isRecording) doChunk();  // start next cycle immediately
   };

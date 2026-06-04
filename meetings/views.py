@@ -476,10 +476,8 @@ def transcribe_audio(request, pk):
         model = _get_whisper()
         segments, info = model.transcribe(
             tmp_path,
-            beam_size=1,
+            beam_size=5,
             language='en',
-            vad_filter=True,           # skip silent sections
-            vad_parameters=dict(min_silence_duration_ms=500)
         )
         text = ' '.join(s.text.strip() for s in segments).strip()
         return JsonResponse({'success': True, 'text': text})
